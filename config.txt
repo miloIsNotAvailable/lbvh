@@ -1,0 +1,2 @@
+obj=../objs/cornell_box.obj
+mtl=../objs/
