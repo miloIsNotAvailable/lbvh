@@ -44,7 +44,7 @@
 
 // std::vector<uint32_t> data = {2, 1, 4, 6, 3, 7};
 
-const GLuint WIDTH = 400, HEIGHT = 400;
+const GLuint WIDTH = 600, HEIGHT = 600;
 
 glm::vec3 e(0., 0., -700.f);
 glm::vec3 c(0., 0., 0.f);
@@ -82,6 +82,8 @@ std::vector<Triangle> triangles = {
 
 int main()
 {
+    camera.WIDTH = WIDTH;
+    camera.HEIGHT = HEIGHT;
     Mesh obj = LoadObj();
     // obj.triangles = triangles;
 
@@ -519,22 +521,8 @@ int main()
     Program generatePrimaryRays( generatePrimaryRaySrc );
     Program traverse( traverseSrc );
     Program bounce( computeBounceSrc );
+    Program evalBounce( evalBouncesSrc );
 
-    traverseSSBO.toGPU( 0 );
-    pixelSSBO.toGPU( 1 );
-    cameraUBO.toGPU( 1 );
-
-    generatePrimaryRays( groups, 1, 1 );
-    barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-    
-    trianglesSSBO.toGPU( 0 );
-    bvhSSBO.toGPU( 1 );
-    traverseSSBO.toGPU( 2 );
-    cameraUBO.toGPU( 1 );
-    
-    traverse( groups, 1, 1 );
-    barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-    
     Buffer shadowRaySSBO(
         GL_SHADER_STORAGE_BUFFER,
         rays.size() * sizeof( ShadowRay ),
@@ -543,46 +531,72 @@ int main()
     );
     
     Program generateShadowRays( generateShadowRaySrc );
-
-    // trianglesSSBO.toGPU( 0 );
-    // bvhSSBO.toGPU( 1 );
-
-    trianglesSSBO.toGPU( 0 );
-    traverseSSBO.toGPU( 1 );
-    pixelSSBO.toGPU( 2 );
-    shadowRaySSBO.toGPU( 3 );
-    normalsSSBO.toGPU( 4 );
-
-    generateShadowRays( groups, 1, 1 );
-    
-    barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
-
     Program traceShadowRays( traverseShadowRaySrc );
     
-    trianglesSSBO.toGPU( 0 );
-    bvhSSBO.toGPU( 1 );
-    shadowRaySSBO.toGPU( 2 );
+    const int MAX_ITER = 10;
+    for( int i = 0; i < MAX_ITER; i ++ ) {
 
-    traceShadowRays( groups, 1, 1 );
-
-    barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
-
-    shadowRaySSBO.toCPU();
-
-    ShadowRay* shadows = shadowRaySSBO.get<ShadowRay>();
-    for( int i = 0; i < 10; i ++ ) {
-        glm::vec4 dir = shadows[i].dir;
-        printf( "%f, %f, %f, %d\n", dir.x, dir.y, dir.z, shadows[i].occluded );
+        traverseSSBO.toGPU( 0 );
+        pixelSSBO.toGPU( 1 );
+        cameraUBO.toGPU( 1 );
+    
+        generatePrimaryRays( groups, 1, 1 );
+        barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        
+        for( int bounces = 0; bounces < 7; bounces ++ ) {
+    
+            trianglesSSBO.toGPU( 0 );
+            bvhSSBO.toGPU( 1 );
+            traverseSSBO.toGPU( 2 );
+            cameraUBO.toGPU( 1 );
+            
+            traverse( groups, 1, 1 );
+            barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+            
+            // trianglesSSBO.toGPU( 0 );
+            // bvhSSBO.toGPU( 1 );
+        
+            trianglesSSBO.toGPU( 0 );
+            traverseSSBO.toGPU( 1 );
+            pixelSSBO.toGPU( 2 );
+            shadowRaySSBO.toGPU( 3 );
+            normalsSSBO.toGPU( 4 );
+        
+            generateShadowRays( groups, 1, 1 );
+            
+            barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+        
+            trianglesSSBO.toGPU( 0 );
+            bvhSSBO.toGPU( 1 );
+            shadowRaySSBO.toGPU( 2 );
+        
+            traceShadowRays( groups, 1, 1 );
+        
+            barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+        
+            // shadowRaySSBO.toCPU();
+        
+            // ShadowRay* shadows = shadowRaySSBO.get<ShadowRay>();
+            // for( int i = 0; i < 10; i ++ ) {
+            //     glm::vec4 dir = shadows[i].dir;
+            //     printf( "%f, %f, %f, %d\n", dir.x, dir.y, dir.z, shadows[i].occluded );
+            // }
+        
+            traverseSSBO.toGPU( 0 );
+            matSSBO.toGPU( 1 );
+            pixelSSBO.toGPU( 2 );
+            shadowRaySSBO.toGPU( 3 );
+            normalsSSBO.toGPU( 4 );
+            
+            bounce( groups, 1, 1 );
+            barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        }
+        
+        pixelSSBO.toGPU( 0 );
+        evalBounce( groups, 1, 1 );
+        barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
     }
 
-    traverseSSBO.toGPU( 0 );
-    matSSBO.toGPU( 1 );
-    pixelSSBO.toGPU( 2 );
-    shadowRaySSBO.toGPU( 3 );
-    normalsSSBO.toGPU( 4 );
-
-    bounce( groups, 1, 1 );
-    barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
     // hitSSBO.toCPU();
     traverseSSBO.toCPU();
@@ -598,12 +612,12 @@ int main()
         Pixel p = pixelRes[i];
 
         glm::vec4 color, hit;
+        color = p.col / float(MAX_ITER);
         if( r.matId >= 0 ) {
             Material mat = obj.materials[ r.matId ];
-            color = mat.diffuse;
             hit = r.o + r.t * r.dir;
         } else {
-            color = glm::vec4(0.f);
+            // color = glm::vec4(0.f);
             hit = glm::vec4(0.f);
         }
         
@@ -613,13 +627,11 @@ int main()
             hit.x,
             hit.y,
             hit.z,
-            p.beta.x,
-            p.beta.y,
-            p.beta.z
+            color.x,
+            color.y,
+            color.z
         );
     }
-
-
 
     std::vector<unsigned char> img(WIDTH * HEIGHT * 3);
 
@@ -631,7 +643,7 @@ int main()
 
             // Ray r = res[src];
             Pixel p = pixelRes[ src ];
-            glm::vec4 color = p.L;
+            glm::vec4 color = p.col / float(MAX_ITER);
 
             // glm::vec4 color;
             // if( r.matId >= 0 ) {

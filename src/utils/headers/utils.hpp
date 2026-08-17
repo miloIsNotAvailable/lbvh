@@ -146,6 +146,7 @@ inline const std::string structs = R"(
     struct Pixel {
         vec4 L;
         vec4 beta;
+        vec4 col;
         uint pixelId;
         uint state;
     };
@@ -158,6 +159,7 @@ inline const std::string structs = R"(
         
         float sensorDist, focalPlaneDist;
         float apertureSize;
+        uint WIDTH, HEIGHT;
     };
 
     struct Material {
@@ -183,4 +185,21 @@ inline const std::string structs = R"(
         float tClose;
         float tFar;
     };
+
+
+    uint pcg(inout uint state)
+    {
+        state = state * 747796405u + 2891336453u;
+
+        uint word =
+            ((state >> ((state >> 28u) + 4u)) ^ state)
+            * 277803737u;
+
+        return (word >> 22u) ^ word;
+    }
+        
+    float rand(inout uint state)
+    {
+        return float(pcg(state) >> 8u) * (1.0 / 16777216.0);
+    }
 )";

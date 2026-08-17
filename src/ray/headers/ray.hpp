@@ -36,9 +36,10 @@ struct ShadowRay {
     uint32_t occluded;
 };
 
-struct alignas(16) Pixel {
+struct Pixel {
     glm::vec4 L;
     glm::vec4 beta;
+    glm::vec4 col;
     uint32_t pixelId;
     uint32_t state;
 
@@ -46,6 +47,7 @@ struct alignas(16) Pixel {
     pixelId( pId ),
     beta( glm::vec4( 1.f ) ), 
     L( glm::vec4( 0.f ) ) ,
+    col( glm::vec4( 0.f ) ) ,
     state( pId * 747796405u + 2891336453u )
     {};
 };
@@ -120,25 +122,26 @@ inline const std::string bounceHeader = raysLayout + structs + R"(
     };
 )";
 
+inline const std::string evalBouncesSrc = raysLayout + structs + R"(
+
+    layout(std430, binding = 0) buffer Pixels
+    {
+        Pixel pixels[];
+    };
+
+    void main() {
+
+        uint id = gl_GlobalInvocationID.x;
+        
+        if( id >= pixels.length() ) return;
+
+        pixels[id].col += pixels[id].L;
+        pixels[id].L = vec4(0.f);
+        pixels[id].beta = vec4(1.f);
+    }
+)";  
+
 inline const std::string computeBounceSrc = bounceHeader + R"(
-
-    uint pcg(inout uint state)
-    {
-        uint old = state;
-
-        state = old * 747796405u + 2891336453u;
-
-        uint word =
-            ((old >> ((old >> 28u) + 4u)) ^ old)
-            * 277803737u;
-
-        return (word >> 22u) ^ word;
-    }
-
-    float rand(inout uint state)
-    {
-        return float(pcg(state)) * (1.0 / 4294967296.0);
-    }
 
     vec3 RandomUnitVectorInHemisphereOf(vec3 normal, vec2 r) {
         float r1 = r.x;
@@ -179,32 +182,36 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
 
         vec4 pos = rays[id].o + rays[id].t * rays[id].dir;
 
-        vec3 color = materials[matIdx].diffuse.xyz;
+        vec3 color = materials[matIdx].diffuse.xyz / PI;
         vec3 beta = pixels[id].beta.xyz;
         vec3 nor = normals[triIdx].xyz;
         vec3 lightPos = vec3( 0., 200., 0. );
         float r = 10.;
         vec3 Le = vec3( 200.f );
 
+        if (dot(rays[id].dir.xyz, nor) > 0.0)
+            nor = -nor;
+
         vec3 liray = shadowRays[id].dir.xyz;
         float cosTheta = max(dot(nor, liray), 0.);
         if (cosTheta <= 0.) return;
 
         vec3 normal = shadowRays[id].normal.xyz;
-        float dist2 = (shadowRays[id].tmax + EPS) * (shadowRays[id].tmax + EPS);
+        float dist2 = (shadowRays[id].tmax ) * (shadowRays[id].tmax );
 
         float cosThetaL = max(dot(normal, -liray), 0.);
         if( cosThetaL <= 0.0 ) return;
 
         float pdf_area = 1. / (4. * PI * r * r);
         float pdf_omega = pdf_area * dist2 / cosThetaL;
-        vec3 Li = Le * cosThetaL / pdf_omega;
+        vec3 Li = Le / pdf_omega;
 
         float pdf = cosTheta / PI; 
 
         // pixels[id].L += materials[matIdx].diffuse;
         float occ = 1.f - float(shadowRays[id].occluded);
-        pixels[id].L  += vec4(occ * beta * color * Li, 0.f);
+        pixels[id].L  += vec4(occ * beta * color * Li * cosTheta, 0.f);
+        // pixels[id].L  += vec4(color, 0.f);
         
 
         float bx = rand( pixels[id].state );
@@ -219,7 +226,7 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
 
         pixels[id].beta *= vec4(color * cosTheta / pdf, 0.f);
 
-        rays[id].o = pos;
+        rays[id].o = pos + vec4(nor * EPS, 0.f);
         rays[id].dir = vec4( bounceDir, 0.f );
     }
 )";
@@ -243,32 +250,14 @@ inline const std::string generatePrimaryRayHeader = raysLayout + structs + R"(
 
 inline const std::string generatePrimaryRaySrc = generatePrimaryRayHeader + R"(
 
-    uint pcg(inout uint state)
-    {
-        uint old = state;
-
-        state = old * 747796405u + 2891336453u;
-
-        uint word =
-            ((old >> ((old >> 28u) + 4u)) ^ old)
-            * 277803737u;
-
-        return (word >> 22u) ^ word;
-    }
-
-    float rand(inout uint state)
-    {
-        return float(pcg(state)) * (1.0 / 4294967296.0);
-    }
-
     void main() {
     
         uint id = gl_GlobalInvocationID.x;
         
         if( id >= rays.length() ) return;
 
-        uint WIDTH = 400u;
-        uint HEIGHT = 400u;
+        uint WIDTH = camera.WIDTH;
+        uint HEIGHT = camera.HEIGHT;
 
         uint x = id % WIDTH;
         uint y = id / WIDTH;
@@ -279,9 +268,9 @@ inline const std::string generatePrimaryRaySrc = generatePrimaryRayHeader + R"(
 
         st.x *= float(WIDTH) / float(HEIGHT);
 
-        uint state = id * 747796405u + 2891336453u;
+        // uint state = id * 747796405u + 2891336453u;
         
-        pixels[id].state = state;
+        // pixels[id].state = state;
 
         float r = rand(pixels[id].state) * camera.apertureSize;
         float a = rand(pixels[id].state) * (2.0 * PI);
@@ -358,24 +347,6 @@ inline const std::string generateShadowRaysHeader = raysLayout + structs + R"(
 )";
 
 inline const std::string generateShadowRaySrc = generateShadowRaysHeader + R"(
-
-    uint pcg(inout uint state)
-    {
-        uint old = state;
-
-        state = old * 747796405u + 2891336453u;
-
-        uint word =
-            ((old >> ((old >> 28u) + 4u)) ^ old)
-            * 277803737u;
-
-        return (word >> 22u) ^ word;
-    }
-
-    float rand(inout uint state)
-    {
-        return float(pcg(state)) * (1.0 / 4294967296.0);
-    }
 
     void main()
     {

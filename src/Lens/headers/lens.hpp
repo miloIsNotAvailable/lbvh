@@ -35,6 +35,7 @@ class Camera {
     
     float sensorDist, focalPlaneDist;
     float apertureSize;
+    uint32_t WIDTH, HEIGHT;
 
     Camera( float sensorDist, float focalPlaneDist, float apertureSize,
             glm::vec3& eye, glm::vec3& center );
