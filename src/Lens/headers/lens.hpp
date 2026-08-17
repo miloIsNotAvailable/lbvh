@@ -18,8 +18,8 @@ inline float hash()
 }
 
 struct Lens {
-    glm::vec3 point;
-    glm::vec3 dir;
+    glm::vec4 point;
+    glm::vec4 dir;
 
     Lens() = default;
     Lens( glm::vec3 point, glm::vec3 dir );
@@ -28,12 +28,13 @@ struct Lens {
 class Camera {
     public:
 
+    glm::vec4 eye, center, n;
+    glm::vec4 sensor, focalPlane;
+
+    glm::vec4 worldUp, right, up;
+    
     float sensorDist, focalPlaneDist;
     float apertureSize;
-    glm::vec3 eye, center, n;
-    glm::vec3 sensor, focalPlane;
-
-    glm::vec3 worldUp, right, up;
 
     Camera( float sensorDist, float focalPlaneDist, float apertureSize,
             glm::vec3& eye, glm::vec3& center );

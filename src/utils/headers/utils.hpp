@@ -96,3 +96,91 @@ class Buffer {
             ::operator delete(data, std::align_val_t(16));
     }
 };
+
+inline const std::string structs = R"(    
+
+    #define PI 3.1415926
+    #define EPS 1e-3f
+
+    struct AABB {
+        vec4 bmin; 
+        vec4 bmax;
+    };
+
+    struct Triangle {
+        vec4 u, v, w;
+        uvec4 quantized;
+        vec4 c;
+        AABB aabb;
+        int matId;
+    };
+    
+    struct Node {
+        AABB aabb;
+        int parent;
+        int left;
+        int right;
+        int isLeaf;
+        int visited;
+    };
+
+    struct Ray {
+        vec4 o;
+        vec4 dir;
+        float tmin;
+        float tmax;
+        float t;
+        uint triId;
+        int matId;
+    };
+
+    struct ShadowRay {
+        vec4 o;
+        vec4 dir;
+        vec4 normal;
+        float tmin;
+        float tmax;
+        uint occluded;
+    };
+
+    struct Pixel {
+        vec4 L;
+        vec4 beta;
+        uint pixelId;
+        uint state;
+    };
+
+    struct Camera {
+        vec4 eye, center, n;
+        vec4 sensor, focalPlane;
+
+        vec4 worldUp, right, up;
+        
+        float sensorDist, focalPlaneDist;
+        float apertureSize;
+    };
+
+    struct Material {
+        vec4 ambient;
+        vec4 diffuse;
+        vec4 specular;
+        vec4 transmittance;
+        vec4 emission;
+
+        float shininess, ior, dissolve;
+    };
+
+    struct TriangleHit {
+        bool hit;
+        float t;
+        float u;
+        float v;
+        float w;
+    };
+
+    struct AABBHit {
+        bool hit;
+        float tClose;
+        float tFar;
+    };
+)";

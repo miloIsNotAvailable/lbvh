@@ -46,9 +46,13 @@
 
 const GLuint WIDTH = 400, HEIGHT = 400;
 
-glm::vec3 e(0., 0., -1200.f);
+glm::vec3 e(0., 0., -700.f);
 glm::vec3 c(0., 0., 0.f);
-Camera camera( 1.5f, 200.f, 0.f, e, c );
+
+float angle = 60.f / 180.f * PI;
+float FOV = .5f / tan( angle / 2.f );
+
+Camera camera( FOV, 200.f, 0.f, e, c );
 
 std::vector<Triangle> triangles = {
     Triangle(
@@ -177,6 +181,7 @@ int main()
 
 
     std::vector<Ray> rays;
+    std::vector<Pixel> pixels;
 
     for (int i = 0; i < WIDTH * HEIGHT; i ++) {
         
@@ -186,12 +191,19 @@ int main()
         glm::vec2 fragCoord = glm::vec2(float(x), float(y));
         glm::vec2 st = fragCoord / glm::vec2(WIDTH, HEIGHT) - 0.5f;
 
+        st.x *= float(WIDTH)/float(HEIGHT);
+
         Lens l = camera.thinLensRay( st );
-        Ray r{ glm::vec4(l.point, 0.), 
-               glm::vec4(l.dir, 0.),
-                glm::vec4( 0.f ),
-                0.f, 1e30f };
+        // Ray r{ glm::vec4(l.point, 0.), 
+        //        glm::vec4(l.dir, 0.),
+        //         glm::vec4( 0.f ),
+        //         0.f, 1e30f };
+
+        Ray r( l.point, l.dir, 0 );
         rays.push_back( r );
+
+        // Pixel p( i );
+        pixels.emplace_back( i );
     }
 
     // for (const Triangle& tri : obj.triangles) {
@@ -445,26 +457,41 @@ int main()
     
     Buffer matSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        obj.Materials.size() * sizeof(Material),
-        obj.Materials.data(),
+        obj.materials.size() * sizeof(Material),
+        obj.materials.data(),
         GL_DYNAMIC_COPY
     );
 
-    Buffer hitSSBO(
+    Buffer normalsSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        rays.size() * sizeof(Hit),
-        nullptr,
+        obj.normals.size() * sizeof(glm::vec4),
+        obj.normals.data(),
+        GL_DYNAMIC_COPY
+    );
+
+    Buffer pixelSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        rays.size() * sizeof(Pixel),
+        pixels.data(),
+        GL_DYNAMIC_COPY
+    );
+
+    Buffer cameraUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof( Camera ),
+        &camera,
         GL_DYNAMIC_COPY
     );
 
     bvhSSBO.toGPU(4);
     matSSBO.toGPU(6);
-    hitSSBO.toGPU(7);
+    pixelSSBO.toGPU(7);
 
     Buffer traverseSSBO(
         GL_SHADER_STORAGE_BUFFER,
         rays.size() * sizeof(Ray),
-        rays.data(),
+        // rays.data(),
+        nullptr,
         GL_DYNAMIC_COPY
     );
 
@@ -488,30 +515,113 @@ int main()
 
     // GLuint traverseProgram = createTraversalShader();
     // dispatchProgram(groups, 1, 1, traverseProgram);
+    
+    Program generatePrimaryRays( generatePrimaryRaySrc );
     Program traverse( traverseSrc );
-    traverse( groups, 1, 1 );
+    Program bounce( computeBounceSrc );
 
+    traverseSSBO.toGPU( 0 );
+    pixelSSBO.toGPU( 1 );
+    cameraUBO.toGPU( 1 );
+
+    generatePrimaryRays( groups, 1, 1 );
+    barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+    
+    trianglesSSBO.toGPU( 0 );
+    bvhSSBO.toGPU( 1 );
+    traverseSSBO.toGPU( 2 );
+    cameraUBO.toGPU( 1 );
+    
+    traverse( groups, 1, 1 );
+    barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+    
+    Buffer shadowRaySSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        rays.size() * sizeof( ShadowRay ),
+        nullptr,
+        GL_DYNAMIC_COPY
+    );
+    
+    Program generateShadowRays( generateShadowRaySrc );
+
+    // trianglesSSBO.toGPU( 0 );
+    // bvhSSBO.toGPU( 1 );
+
+    trianglesSSBO.toGPU( 0 );
+    traverseSSBO.toGPU( 1 );
+    pixelSSBO.toGPU( 2 );
+    shadowRaySSBO.toGPU( 3 );
+    normalsSSBO.toGPU( 4 );
+
+    generateShadowRays( groups, 1, 1 );
+    
+    barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+
+    Program traceShadowRays( traverseShadowRaySrc );
+    
+    trianglesSSBO.toGPU( 0 );
+    bvhSSBO.toGPU( 1 );
+    shadowRaySSBO.toGPU( 2 );
+
+    traceShadowRays( groups, 1, 1 );
+
+    barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+
+    shadowRaySSBO.toCPU();
+
+    ShadowRay* shadows = shadowRaySSBO.get<ShadowRay>();
+    for( int i = 0; i < 10; i ++ ) {
+        glm::vec4 dir = shadows[i].dir;
+        printf( "%f, %f, %f, %d\n", dir.x, dir.y, dir.z, shadows[i].occluded );
+    }
+
+    traverseSSBO.toGPU( 0 );
+    matSSBO.toGPU( 1 );
+    pixelSSBO.toGPU( 2 );
+    shadowRaySSBO.toGPU( 3 );
+    normalsSSBO.toGPU( 4 );
+
+    bounce( groups, 1, 1 );
     barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
-    hitSSBO.toCPU();
+    // hitSSBO.toCPU();
+    traverseSSBO.toCPU();
+    // Hit* res = hitSSBO.get<Hit>();
+    Ray* res = traverseSSBO.get<Ray>();
 
-    Hit* res = hitSSBO.get<Hit>();
+    pixelSSBO.toCPU();
+    Pixel* pixelRes = pixelSSBO.get<Pixel>();
 
-    for (size_t i = 0; i < 200; ++i) {
+    for (size_t i = 0; i < 10; ++i) {
+        
+        Ray r = res[i];
+        Pixel p = pixelRes[i];
+
+        glm::vec4 color, hit;
+        if( r.matId >= 0 ) {
+            Material mat = obj.materials[ r.matId ];
+            color = mat.diffuse;
+            hit = r.o + r.t * r.dir;
+        } else {
+            color = glm::vec4(0.f);
+            hit = glm::vec4(0.f);
+        }
+        
         printf(
             "hit: %f, %f, %f\t" 
             "color: %f, %f, %f\n",
-            res[i].hit.x,
-            res[i].hit.y,
-            res[i].hit.z,
-            res[i].color.x,
-            res[i].color.y,
-            res[i].color.z
+            hit.x,
+            hit.y,
+            hit.z,
+            p.beta.x,
+            p.beta.y,
+            p.beta.z
         );
     }
 
 
-    std::vector<unsigned char> pixels(WIDTH * HEIGHT * 3);
+
+    std::vector<unsigned char> img(WIDTH * HEIGHT * 3);
 
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
@@ -519,24 +629,36 @@ int main()
             size_t src = y * WIDTH + x;
             size_t dst = (HEIGHT - 1 - y) * WIDTH + x;
 
+            // Ray r = res[src];
+            Pixel p = pixelRes[ src ];
+            glm::vec4 color = p.L;
+
+            // glm::vec4 color;
+            // if( r.matId >= 0 ) {
+            //     Material mat = obj.Materials[ r.matId ];
+            //     color = mat.diffuse;
+            // } else {
+            //     color = glm::vec4(0.f);
+            // }
+
             glm::vec3 c = glm::clamp(
-                glm::vec3(res[src].color),
+                glm::vec3(color),
                 glm::vec3(0.0f),
                 glm::vec3(1.0f)
             );
 
-            pixels[dst * 3 + 0] = static_cast<unsigned char>(c.r * 255.0f);
-            pixels[dst * 3 + 1] = static_cast<unsigned char>(c.g * 255.0f);
-            pixels[dst * 3 + 2] = static_cast<unsigned char>(c.b * 255.0f);
+            img[dst * 3 + 0] = static_cast<unsigned char>(c.r * 255.0f);
+            img[dst * 3 + 1] = static_cast<unsigned char>(c.g * 255.0f);
+            img[dst * 3 + 2] = static_cast<unsigned char>(c.b * 255.0f);
         }
     }
 
     stbi_write_jpg(
-        "output.jpg",
+        "output3.jpg",
         WIDTH,
         HEIGHT,
         3,
-        pixels.data(),
+        img.data(),
         100
     );
 

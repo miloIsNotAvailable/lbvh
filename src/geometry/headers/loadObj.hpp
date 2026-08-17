@@ -35,10 +35,11 @@ struct Material {
 struct Mesh {
     std::vector<Triangle> triangles;
     std::vector<Triangle> areaLights;
-    std::vector<Material> Materials;
+    std::vector<Material> materials;
+    std::vector<glm::vec4> normals;
 
-    Mesh( std::vector<Triangle> triangles, std::vector<Material> Materials ) 
-    : triangles( triangles ), Materials(Materials) {};
+    Mesh( std::vector<Triangle> triangles, std::vector<Material> materials, std::vector<glm::vec4> nor ) 
+    : triangles( triangles ), materials(materials), normals( nor ) {};
 };
 
 std::string loadFile();

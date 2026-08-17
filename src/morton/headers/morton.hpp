@@ -8,22 +8,12 @@
 GLuint createQuantizeShader();
 GLuint createMortonShader();
 
-inline constexpr const char * mortonHeader= R"(#version 430
+const std::string mortonLayout = R"(#version 430
 
     layout(local_size_x = 64) in;
+)";
 
-    struct AABB {
-        vec4 bmin; 
-        vec4 bmax;
-    };
-
-    struct Triangle {
-        vec4 u, v, w;
-        uvec4 quantized;
-        vec4 c;
-        AABB aabb;
-        int matId;
-    };
+inline const std::string mortonHeader = mortonLayout + structs + R"(
     
     layout(std430, binding = 0) buffer Morton
     {
@@ -42,7 +32,7 @@ inline constexpr const char * mortonHeader= R"(#version 430
 )";
 
 
-inline const std::string mortonSrc = std::string(mortonHeader) + R"(
+inline const std::string mortonSrc = mortonHeader + R"(
     
     uint expandBits(uint v)
     {
@@ -82,4 +72,4 @@ inline const std::string mortonSrc = std::string(mortonHeader) + R"(
 
         morton[ id ] = uvec2( m, id );
     }
-    )";
+)";

@@ -59,23 +59,11 @@ class Radix {
     GLuint operator()( uint32_t bit, GLuint gX, GLuint gY, GLuint t );
 };
 
-inline constexpr const char * header = R"(#version 430
+const std::string radixLayout = R"(#version 430
 
-    layout(local_size_x = 64) in;
+    layout(local_size_x = 64) in;)";
 
-    struct AABB {
-        vec4 bmin; 
-        vec4 bmax;
-    };
-
-    struct Triangle {
-        vec4 u, v, w;
-        uvec4 quantized;
-        vec4 c;
-        AABB aabb;
-        int matId;
-    };
-
+inline const std::string header = radixLayout + structs + R"(
     layout(std430, binding = 0) buffer Data
     {
         uvec2 input[];
@@ -108,16 +96,19 @@ inline constexpr const char * header = R"(#version 430
 )";
 
 
-inline const std::string radixExtractSrc = std::string(header) + R"(
+inline const std::string radixExtractSrc = header + R"(
 void main()
 {
     uint id = gl_GlobalInvocationID.x;
+
+    if( id >= extract.length() ) return;
+
     extract[id].x = 1u - ((input[id].x >> bit) & 1u);
     extract[id].y = input[id].y;
 }
 )";
 
-inline const std::string radixScanSrc = std::string(header) + R"(
+inline const std::string radixScanSrc = header + R"(
 void main()
 {
     uint id = gl_GlobalInvocationID.x;
@@ -165,7 +156,7 @@ void main()
 }
 )";
 
-inline const std::string radixScatterSrc = std::string(header) + R"(
+inline const std::string radixScatterSrc = header + R"(
 void main()
 {
     uint id = gl_GlobalInvocationID.x;
@@ -195,7 +186,7 @@ void main()
     }
 )";
 
-inline const std::string radixReorderTrianglesSrc = std::string(header) + R"(
+inline const std::string radixReorderTrianglesSrc = header + R"(
 void main()
 {
     uint id = gl_GlobalInvocationID.x;

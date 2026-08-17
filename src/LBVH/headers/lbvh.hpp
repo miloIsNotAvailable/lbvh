@@ -16,55 +16,11 @@ GLuint createLBVHShader();
 GLuint createAABBShader();
 GLuint createTraversalShader();
 
-inline constexpr const char * lbvhHeader= R"(#version 430
+const std::string layout = R"(#version 430
 
-    layout(local_size_x = 64) in;
+    layout(local_size_x = 64) in;)";
 
-    struct AABB {
-        vec4 bmin; 
-        vec4 bmax;
-    };
-
-    struct Triangle {
-        vec4 u, v, w;
-        uvec4 quantized;
-        vec4 c;
-        AABB aabb;
-        int matId;
-    };
-    
-    struct Node {
-        AABB aabb;
-        int parent;
-        int left;
-        int right;
-        int isLeaf;
-        int visited;
-    };
-
-    struct Ray {
-        vec4 o;
-        vec4 dir;
-        vec4 hit;
-        float tmin;
-        float tmax;
-    };
-
-    struct Hit {
-        vec4 hit;
-        vec4 color;
-        float t;
-    };
-
-    struct Material {
-        vec4 ambient;
-        vec4 diffuse;
-        vec4 specular;
-        vec4 transmittance;
-        vec4 emission;
-
-        float shininess, ior, dissolve;
-    };
+inline const std::string lbvhHeader = layout + structs + R"(
 
     layout(std430, binding = 0) buffer Morton
     {
@@ -91,13 +47,18 @@ inline constexpr const char * lbvhHeader= R"(#version 430
         Material materials[];
     };
 
-    layout(std430, binding = 7) buffer Hits
+    layout(std430, binding = 7) buffer Pixels
     {
-        Hit hits[];
+        Pixel pixels[];
+    };
+
+    layout(std430, binding = 8) buffer ShadowRays
+    {
+        ShadowRay shadowRays[];
     };
 )";
 
-inline const std::string lbvhSrc = std::string(lbvhHeader) + R"(
+inline const std::string lbvhSrc = lbvhHeader + R"(
     
     int clz(uint x)
     {
@@ -188,7 +149,7 @@ inline const std::string lbvhSrc = std::string(lbvhHeader) + R"(
     }
     )";
 
-inline const std::string aabbSrc = std::string(lbvhHeader) + R"(
+inline const std::string aabbSrc = lbvhHeader + R"(
     
     void main()
     {
@@ -224,20 +185,27 @@ inline const std::string aabbSrc = std::string(lbvhHeader) + R"(
     }
     )";
 
-inline const std::string traverseSrc = std::string(lbvhHeader) + R"(
-    struct TriangleHit {
-        bool hit;
-        float t;
-        float u;
-        float v;
-        float w;
+
+inline const std::string traverseRayHeader = layout + structs + R"(
+    
+    layout(std430, binding = 0) buffer TriIn
+    {
+        Triangle triangles[];
     };
 
-    struct AABBHit {
-        bool hit;
-        float tClose;
-        float tFar;
+    layout(std430, binding = 1) buffer LBVH
+    {
+        Node nodes[];
     };
+
+    layout(std430, binding = 2) buffer Rays
+    {
+        Ray rays[];
+    };
+)";
+
+inline const std::string traverseSrc = traverseRayHeader + R"(
+
 
     TriangleHit intersectTriangle(
         vec3 o,
@@ -337,6 +305,7 @@ inline const std::string traverseSrc = std::string(lbvhHeader) + R"(
         float closestT = ray.tmax;
         vec3 hitPoint;
         int matId;
+        int triId;
 
         while( size > 0 ) {
             uint idx = V[--size];
@@ -366,6 +335,7 @@ inline const std::string traverseSrc = std::string(lbvhHeader) + R"(
                 if( hit.hit && hit.t < closestT ) {
                     closestT = hit.t;
                     // hitTri = top.tr;
+                    triId = int(trIdx);
                     matId = triangles[trIdx].matId;
                     // hitPoint = ray.o + hit.t * ray.dir;
                 }
@@ -394,14 +364,180 @@ inline const std::string traverseSrc = std::string(lbvhHeader) + R"(
         // rays[ id ].hit = ray.o + closestT * ray.dir;
         if( closestT >= 1e10f ) {
         
-            hits[id].hit = vec4( 0. );
-            hits[id].t = -1.;
-            hits[id].color = vec4(0.);
-        
+            // hits[id].hit = vec4( 0. );
+            // hits[id].t = -1.;
+            // hits[id].color = vec4(0.);
+            rays[id].t = -1;
+            rays[id].matId = -1;
+            rays[id].triId = -1;
+            // rays[id].active = 0;
+
+            
         } else {
-            hits[id].hit = ray.o + closestT * ray.dir;
-            hits[id].t = closestT;
-            hits[id].color = materials[ matId ].diffuse;
-         }
+            // hits[id].hit = ray.o + closestT * ray.dir;
+            // hits[id].t = closestT;
+            // hits[id].color = materials[ matId ].diffuse;
+
+            rays[id].t = closestT;
+            rays[id].matId = matId;
+            rays[id].triId = triId;
+            // rays[id].active = 1;
+        }
+    }
+    )";
+
+inline const std::string traverseShadowRayHeader = layout + structs + R"(
+    
+    layout(std430, binding = 0) buffer TriIn
+    {
+        Triangle triangles[];
+    };
+
+    layout(std430, binding = 1) buffer LBVH
+    {
+        Node nodes[];
+    };
+
+    layout(std430, binding = 2) buffer ShadowRays
+    {
+        ShadowRay shadowRays[];
+    };
+)";
+
+inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
+
+    bool intersectTriangleShadow(
+        vec3 o,
+        vec3 dir,
+        Triangle tri,
+        float tmin,
+        float tmax
+    ) {
+        vec3 e1 = tri.v.xyz - tri.u.xyz;
+        vec3 e2 = tri.w.xyz - tri.u.xyz;
+
+        vec3 h = cross(dir, e2);
+        float a = dot(e1, h);
+
+        if (abs(a) < 1e-8)
+            return false;
+
+        float f = 1.0 / a;
+
+        vec3 s = o - tri.u.xyz;
+
+        float u = f * dot(s, h);
+
+        if (u < 0.0 || u > 1.0)
+            return false;
+
+        vec3 q = cross(s, e1);
+
+        float v = f * dot(dir, q);
+
+        if (v < 0.0 || u + v > 1.0)
+            return false;
+
+        float t = f * dot(e2, q);
+
+        return t >= tmin && t <= tmax;
+    }
+
+    AABBHit intersectAABB(
+        vec3 o,
+        vec3 r,
+        vec3 bmin,
+        vec3 bmax
+    ) {
+        vec3 tLow  = (bmin - o) / r;
+        vec3 tHigh = (bmax - o) / r;
+
+        vec3 tCloseI = min(tLow, tHigh);
+        vec3 tFarI   = max(tLow, tHigh);
+
+        float tClose = max(
+            max(tCloseI.x, tCloseI.y),
+            tCloseI.z
+        );
+
+        float tFar = min(
+            min(tFarI.x, tFarI.y),
+            tFarI.z
+        );
+
+        return AABBHit(
+            tClose <= tFar,
+            tClose,
+            tFar
+        );
+    }
+
+    void main()
+    {
+        uint id = gl_GlobalInvocationID.x;
+
+        if (id >= shadowRays.length())
+            return;
+
+        ShadowRay ray = shadowRays[id];
+        shadowRays[id].occluded = 0u;
+
+        const int STACK_SIZE = 64;
+
+        uint V[STACK_SIZE];
+        int size = 0;
+        
+        V[size++]=0;
+
+        while( size > 0 ) {
+            uint idx = V[--size];
+            Node node = nodes[ idx ];
+
+            AABBHit nodeHit = intersectAABB( ray.o.xyz, ray.dir.xyz, node.aabb.bmin.xyz, node.aabb.bmax.xyz );
+
+            if( !nodeHit.hit || nodeHit.tFar < ray.tmin || nodeHit.tClose > ray.tmax ) {
+                continue;
+            }
+
+            if( idx >= triangles.length() - 1 ) {
+
+                uint trIdx = idx - triangles.length() + 1;
+
+                if( triangles[trIdx].matId < 0 )
+                    continue;
+                
+                bool hit = intersectTriangleShadow(
+                    ray.o.xyz,
+                    ray.dir.xyz,
+                    triangles[ trIdx ],
+                    ray.tmin,
+                    ray.tmax
+                );
+
+                if( hit ) {
+                    shadowRays[id].occluded = 1u;
+                    return;
+                }
+            } else {
+            
+                Node left = nodes[ node.left ];
+                Node right = nodes[ node.right ];
+
+                AABBHit leftHit = intersectAABB( ray.o.xyz, ray.dir.xyz, left.aabb.bmin.xyz, left.aabb.bmax.xyz );
+                AABBHit rightHit = intersectAABB( ray.o.xyz, ray.dir.xyz, right.aabb.bmin.xyz, right.aabb.bmax.xyz );
+
+                if( leftHit.hit && rightHit.hit ) {
+                    uint frstNode = leftHit.tClose > rightHit.tClose ? node.right : node.left;
+                    uint scndNode = leftHit.tClose > rightHit.tClose ? node.left : node.right;
+                
+                    V[size++] = scndNode;
+                    V[size++] = frstNode;
+                } else if( leftHit.hit ) {
+                    V[size++]=node.left;
+                    } else if( rightHit.hit ) {
+                        V[size++]=node.right; 
+                }
+            }
+        }
     }
     )";
