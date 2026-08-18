@@ -202,6 +202,11 @@ inline const std::string traverseRayHeader = layout + structs + R"(
     {
         Ray rays[];
     };
+
+    layout(std430, binding = 3) buffer Scans
+    {
+        uint scan[];
+    };
 )";
 
 inline const std::string traverseSrc = traverseRayHeader + R"(
@@ -370,8 +375,8 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
             rays[id].t = -1;
             rays[id].matId = -1;
             rays[id].triId = -1;
-            // rays[id].active = 0;
-
+            rays[id].dead = 1;
+            scan[id]=1;
             
         } else {
             // hits[id].hit = ray.o + closestT * ray.dir;
@@ -381,7 +386,8 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
             rays[id].t = closestT;
             rays[id].matId = matId;
             rays[id].triId = triId;
-            // rays[id].active = 1;
+            rays[id].dead = 0;
+            scan[id]=0;
         }
     }
     )";

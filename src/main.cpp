@@ -14,7 +14,7 @@
 #include <loadObj.hpp>
 #include <lens.hpp>
 #include "stb_image_write.h"
-
+#include <scan.hpp>
 
 // std::vector<Triangle> triangles = {
 //     Triangle(
@@ -292,6 +292,90 @@ int main()
               << glGetString(GL_VERSION)
               << "\n";
 
+
+    //   0011 2223 3444 5555
+    std::vector<uint32_t> flags = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1 };
+    
+    uint32_t wgSize = 2;
+   
+    // std::vector<Scan> levels;
+    // size_t wgSumSize = flags.size();
+
+    // std::vector<uint32_t> scanData = flags;
+    // Program scanSums( scanScanSrc );
+    // Program addSums( addScansSrc );
+
+    // while( wgSumSize >= wgSize ) {
+
+    //     Buffer flagsSSBO(
+    //         GL_SHADER_STORAGE_BUFFER,
+    //         wgSumSize * sizeof(uint32_t),
+    //         scanData.data(),
+    //         GL_DYNAMIC_COPY
+    //     );
+
+    //     wgSumSize = (wgSumSize + wgSize - 1) / wgSize;
+
+    //     Buffer wgSumSSBO(
+    //         GL_SHADER_STORAGE_BUFFER,
+    //         wgSumSize * sizeof(uint32_t),
+    //         nullptr,
+    //         GL_DYNAMIC_COPY
+    //     );
+
+    //     flagsSSBO.toGPU(0);
+    //     wgSumSSBO.toGPU(1);
+
+    //     scanSums( wgSumSize, 1, 1 );
+    //     barrier( GL_ALL_BARRIER_BITS );
+
+    //     scanData = wgSumSSBO.toCPU<uint32_t>();
+
+    //     Scan scan_( std::move(flagsSSBO), std::move(wgSumSSBO), wgSumSize );
+
+    //     levels.push_back( std::move( scan_ ) );       
+    // }
+
+    // for( int i = levels.size() - 1; i > 0; i-- ) {
+    //     // Scan &l = levels[i];
+    //     // std::vector<uint32_t> t = l.sum.toCPU<uint32_t>();
+        
+    //     Scan& parent = levels[i];
+    //     Scan& child  = levels[i - 1];
+
+    //     std::vector<uint32_t> p = parent.scan.toCPU<uint32_t>();
+    //     std::vector<uint32_t> c = child.scan.toCPU<uint32_t>();
+
+    //     parent.scan.toGPU( 0 );
+    //     child.scan.toGPU( 1 );
+        
+    //     // GLuint groups = (child.sumSize + wgSize - 1) / wgSize;
+    //     printf( "%d\n", i );
+    //     addSums( child.sumSize, 1, 1 );
+
+    //     for( int i = 0; i < p.size(); i++ ) {
+    //         printf( "%d,", p[i] );
+    //     }
+        
+    //     std::cout << "\n";
+
+    //     for( int i = 0; i < c.size(); i++ ) {
+    //         printf( "%d,", c[i] );
+    //     }
+        
+    //     std::cout << "\n\n";
+        
+    // }
+
+    Buffer out = blellochScan( flags, wgSize );
+
+    std::vector<uint32_t> c = out.toCPU<uint32_t>();
+    for( int i = 0; i < c.size(); i++ ) {
+        printf( "%d,", c[i] );
+    }
+    
+    std::cout << "\n\n";
+    
     Buffer trianglesSSBO(
         GL_SHADER_STORAGE_BUFFER,
         obj.triangles.size() * sizeof(Triangle),
@@ -409,44 +493,11 @@ int main()
     reorder( groups, 1, 1 );
     barrier( GL_SHADER_STORAGE_BARRIER_BIT );
 
-    trianglesSortedSSBO.toCPU();
+    // trianglesSortedSSBO.toCPU();
 
-    Triangle* sortedTriangles = trianglesSortedSSBO.get<Triangle>();
+    // Triangle* sortedTriangles = trianglesSortedSSBO.get<Triangle>();
 
-    // for (size_t i = 0; i < obj.triangles.size(); ++i) {
-    //     const Triangle& t = sortedTriangles[i];
-
-    //     std::cout << "Triangle " << i << '\n';
-
-    //     std::cout
-    //         << "  u: "
-    //         << t.u.x << ", "
-    //         << t.u.y << ", "
-    //         << t.u.z << '\n';
-
-    //     std::cout
-    //         << "  v: "
-    //         << t.v.x << ", "
-    //         << t.v.y << ", "
-    //         << t.v.z << '\n';
-
-    //     std::cout
-    //         << "  w: "
-    //         << t.w.x << ", "
-    //         << t.w.y << ", "
-    //         << t.w.z << '\n';
-
-    //     std::cout
-    //         << "  c: "
-    //         << t.c.x << ", "
-    //         << t.c.y << ", "
-    //         << t.c.z << '\n';
-    // }
-
-
-    // BVH
-
-    std::cout << '\n';
+    // std::cout << '\n';
 
     std::vector<Node> nodes(2 * obj.triangles.size() - 1);
 
@@ -529,6 +580,28 @@ int main()
         nullptr,
         GL_DYNAMIC_COPY
     );
+
+    Buffer rayActiveSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        rays.size() * sizeof( uint32_t ),
+        nullptr,
+        GL_DYNAMIC_COPY
+    );
+
+    Buffer rayCompactedSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        rays.size() * sizeof( Ray ),
+        nullptr,
+        GL_DYNAMIC_COPY
+    );
+
+    uint32_t rSize = rays.size();
+    Buffer rayCountSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        sizeof( uint32_t ),
+        &rSize,
+        GL_DYNAMIC_COPY
+    );
     
     Program generateShadowRays( generateShadowRaySrc );
     Program traceShadowRays( traverseShadowRaySrc );
@@ -548,6 +621,7 @@ int main()
             trianglesSSBO.toGPU( 0 );
             bvhSSBO.toGPU( 1 );
             traverseSSBO.toGPU( 2 );
+            rayActiveSSBO.toGPU( 3 );
             cameraUBO.toGPU( 1 );
             
             traverse( groups, 1, 1 );
@@ -587,6 +661,7 @@ int main()
             pixelSSBO.toGPU( 2 );
             shadowRaySSBO.toGPU( 3 );
             normalsSSBO.toGPU( 4 );
+            rayActiveSSBO.toGPU( 5 );
             
             bounce( groups, 1, 1 );
             barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
@@ -599,12 +674,12 @@ int main()
 
 
     // hitSSBO.toCPU();
-    traverseSSBO.toCPU();
+    std::vector<Ray> res = traverseSSBO.toCPU<Ray>();
     // Hit* res = hitSSBO.get<Hit>();
-    Ray* res = traverseSSBO.get<Ray>();
+    // Ray* res = traverseSSBO.get<Ray>();
 
-    pixelSSBO.toCPU();
-    Pixel* pixelRes = pixelSSBO.get<Pixel>();
+    std::vector<Pixel> pixelRes = pixelSSBO.toCPU<Pixel>();
+    // Pixel* pixelRes = pixelSSBO.get<Pixel>();
 
     for (size_t i = 0; i < 10; ++i) {
         
@@ -673,221 +748,6 @@ int main()
         img.data(),
         100
     );
-
-    // GLuint trianglesSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(Triangle), triangles.data(), GL_DYNAMIC_COPY );
-    // GLuint mortonSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_COPY );
-    // GLuint sceneUBO = generateBuffer( GL_UNIFORM_BUFFER, sizeof(AABB), &aabb, GL_DYNAMIC_COPY );
-    
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, mortonSSBO);
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, trianglesSSBO);
-    // glBindBufferBase(GL_UNIFORM_BUFFER, 0, sceneUBO);
-    
-    // GLuint quantizeProgram = createQuantizeShader();
-    // GLuint mortonProgram = createMortonShader();
-
-    // // dispatchProgram( (triangles.size() + 1 - 1) / 1, 1, 1, quantizeProgram );
-    // dispatchProgram( (triangles.size() + 1 - 1) / 1, 1, 1, mortonProgram );
-
-    // // glBindBuffer( GL_SHADER_STORAGE_BUFFER, mortonSSBO );
-    // // std::vector<glm::uvec2> tres( triangles.size() );
-    // // glGetBufferSubData(
-    // //     GL_SHADER_STORAGE_BUFFER,
-    // //     0,
-    // //     tres.size() * sizeof(glm::uvec2),
-    // //     tres.data()
-    // // );
-
-    // // for( auto &t : tres ) {
-    // //     // unsigned int idx = t >> 30;
-    // //     // unsigned int morton = t << 30;
-    // //     printf( "%u, %u\n", t.x, t.y );
-    // // }
-
-    // // GLuint inputSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(glm::uvec2), triangles.data(), GL_DYNAMIC_COPY );
-    // GLuint extractSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_COPY );
-    // GLuint outputSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(glm::uvec2), nullptr, GL_DYNAMIC_COPY );
-    // GLuint uniformUBO = generateBuffer( GL_UNIFORM_BUFFER, sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW );
-
-    // GLuint trianglesSortedSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, triangles.size() * sizeof(Triangle), nullptr, GL_DYNAMIC_COPY );
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, trianglesSortedSSBO);
-
-    // // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, inputSSBO);
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, trianglesSSBO);
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, extractSSBO);
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, outputSSBO);
-    // glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniformUBO);
-    
-    // GLuint extractProgram = createExtractShader();
-    // GLuint scanProgram = createScanShader();
-    // GLuint scatterProgram = createScatterShader();
-
-    // GLuint numElements = triangles.size();
-    // GLuint localSize = 1;
-
-    // GLuint groups =
-    //     (numElements + localSize - 1) / localSize;
-
-    // for( int i = 0; i < 30; i ++ ) {
-    //     // bindBuffer( uniformSSBO, sizeof(uint32_t), &i, GL_DYNAMIC_COPY );
-    //     modifyBufferData(
-    //         uniformUBO,
-    //         GL_UNIFORM_BUFFER,
-    //         0,
-    //         sizeof(uint32_t),
-    //         &i
-    //     );
-
-    //     dispatchProgram( groups, 1, 1, extractProgram );
-    //     dispatchProgram( groups, 1, 1, scanProgram );
-    //     dispatchProgram( groups, 1, 1, scatterProgram );
-    //     // scan( data );
-    //     // scatter( data );
-       
-    //     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-    //     std::swap(mortonSSBO, outputSSBO);
-
-    //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, mortonSSBO);
-    //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, outputSSBO);
-
-    //     std::swap(trianglesSSBO, trianglesSortedSSBO);
-
-
-    //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, trianglesSSBO);
-    //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, trianglesSortedSSBO);
-    // }
-
-    // glDeleteBuffers( 1, &outputSSBO );
-    // outputSSBO=0;
-
-    // glDeleteBuffers( 1, &trianglesSortedSSBO );
-    // trianglesSortedSSBO=0;
-
-    // std::vector<Triangle> sortedTriangles(triangles.size());
-
-    // glBindBuffer(GL_SHADER_STORAGE_BUFFER, trianglesSSBO);
-
-    // glGetBufferSubData(
-    //     GL_SHADER_STORAGE_BUFFER,
-    //     0,
-    //     sortedTriangles.size() * sizeof(Triangle),
-    //     sortedTriangles.data()
-    // );
-
-    // for (size_t i = 0; i < sortedTriangles.size(); ++i) {
-    //     const Triangle& t = sortedTriangles[i];
-
-    //     std::cout << "Triangle " << i << '\n';
-
-    //     std::cout
-    //         << "  u: "
-    //         << t.u.x << ", "
-    //         << t.u.y << ", "
-    //         << t.u.z << '\n';
-
-    //     std::cout
-    //         << "  v: "
-    //         << t.v.x << ", "
-    //         << t.v.y << ", "
-    //         << t.v.z << '\n';
-
-    //     std::cout
-    //         << "  w: "
-    //         << t.w.x << ", "
-    //         << t.w.y << ", "
-    //         << t.w.z << '\n';
-    // }
-
-    // // Radix radix( inputSSBO, data.size() );
-    // // for( int i = 0; i < 32; i ++ ) {
-    // //     outputSSBO = radix( i, groups, 1, 1 );
-    // //     std::swap(inputSSBO, outputSSBO);
-
-    // //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, inputSSBO);
-    // //     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, outputSSBO);
-    // // }
-
-    // // glBindBuffer( GL_SHADER_STORAGE_BUFFER, outputSSBO );
-    // // std::vector<glm::uvec2> res( triangles.size() );
-    // // glGetBufferSubData(
-    // //     GL_SHADER_STORAGE_BUFFER,
-    // //     0,
-    // //     res.size() * sizeof(glm::uvec2),
-    // //     res.data()
-    // // );
-
-    // // // res.erase(
-    // // //     std::remove(res.begin(), res.end(), 0),
-    // // //     res.end());
-
-    // // for( auto& d : res ) {
-    // //     printf( "%d, %d\n", d.x, d.y );
-    // // }
-
-    // std::cout << "\n";
-    // std::vector<Node> nodes(2 * triangles.size() - 1);
-
-    // GLuint bvhSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, nodes.size() * sizeof(Node), nodes.data(), GL_DYNAMIC_COPY );
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, bvhSSBO);
-    
-    // GLuint traverseSSBO = generateBuffer( GL_SHADER_STORAGE_BUFFER, rays.size() * sizeof(Ray), rays.data(), GL_DYNAMIC_COPY );
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, traverseSSBO);
-
-    // GLuint bvhProgram = createLBVHShader();
-    // dispatchProgram( groups, 1, 1, bvhProgram );
-
-    // GLuint aabbProgram = createAABBShader();
-    // dispatchProgram( groups, 1, 1, aabbProgram );
-
-    // glDeleteBuffers( 1, &mortonSSBO );
-    // mortonSSBO=0;
-
-    // GLuint traverseProgram = createTraversalShader();
-    // dispatchProgram( groups, 1, 1, traverseProgram );
-
-    // glBindBuffer( GL_SHADER_STORAGE_BUFFER, traverseSSBO );
-    // std::vector<Ray> res( rays.size() );
-    // glGetBufferSubData(
-    //     GL_SHADER_STORAGE_BUFFER,
-    //     0,
-    //     res.size() * sizeof(Ray),
-    //     res.data()
-    // );
-
-    // for( auto& r : res ) {
-    //     printf( "%f, %f, %f\n", r.hit.x, r.hit.y, r.hit.z );
-    // }
-
-    // glBindBuffer( GL_SHADER_STORAGE_BUFFER, bvhSSBO );
-    // // std::vector<Node> res( triangles.size() * 2 - 1 );
-    // glGetBufferSubData(
-    //     GL_SHADER_STORAGE_BUFFER,
-    //     0,
-    //     nodes.size() * sizeof(Node),
-    //     nodes.data()
-    // );
-
-    // glBindBuffer( GL_SHADER_STORAGE_BUFFER, mortonSSBO );
-    // std::vector<glm::uvec2> sorted( triangles.size() );
-    // glGetBufferSubData(
-    //     GL_SHADER_STORAGE_BUFFER,
-    //     0,
-    //     sorted.size() * sizeof(glm::uvec2),
-    //     sorted.data()
-    // );
-
-    // for( int i =0; i < nodes.size(); i ++ ) {
-    //     Node d = nodes[ i ];
-    //     if( i > triangles.size() - 1 ) {
-    //         uint32_t id = sorted[ i - triangles.size() + 1 ].y;
-    //         printf( "%d, %d, %d, %d\n", d.parent, d.left, d.right, id );
-    //     } else {
-    //         printf( "%d, %d, %d, %d\n", d.parent, d.left, d.right, d.isLeaf );
-    //     }
-    //     // printf( "%f, %f, %f\n", d.aabb.bmin.x, d.aabb.bmin.y, d.aabb.bmin.z );
-    //     // printf( "%f, %f, %f\n", d.aabb.bmax.x, d.aabb.bmax.y, d.aabb.bmax.z );
-    //     // printf( "\n\n" );
-    // }
 
     while (!glfwWindowShouldClose(window))
     {

@@ -51,14 +51,22 @@ void Buffer::update( const void* data, GLsizeiptr dataSize, GLintptr off ) {
     );
 }
 
-void Buffer::toCPU() {
-    data = ::operator new(size, std::align_val_t(16));
-    glBindBuffer(target, buffer);
+// template<typename T> std::vector<T> Buffer::toCPU( ) {
+//     // data = ::operator new(size, std::align_val_t(16));
+  
+//     // if ( data == nullptr ) {
+//     //     data = ::operator new(size, std::align_val_t(16));
+//     // }
+//     std::vector<T> v(size / sizeof(T));
+  
+//     glBindBuffer(target, buffer);
 
-    glGetBufferSubData(
-        target,
-        0,
-        size,
-        data
-    );
-}
+//     glGetBufferSubData(
+//         target,
+//         0,
+//         size,
+//         v.data()
+//     );
+
+//     return v;
+// }

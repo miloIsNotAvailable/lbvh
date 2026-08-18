@@ -15,15 +15,18 @@ struct Ray {
     float tmax;
     float t;
     uint32_t triId;
-    // uint32_t active;
+    uint32_t dead;
+    uint32_t pixelId;
     int matId;
     // glm::vec3 t;
+
+    Ray() {};
 
     Ray( glm::vec3 o, glm::vec3 dir, uint32_t shadowRay ) 
     : o(glm::vec4(o, 0.)), 
     dir(glm::vec4(dir, 0.)), 
     tmin(0.f), tmax(1e30f), 
-    matId(-1)
+    matId(-1), dead( 0 )
     {};
 };
 
@@ -42,6 +45,8 @@ struct Pixel {
     glm::vec4 col;
     uint32_t pixelId;
     uint32_t state;
+
+    Pixel() {};
 
     Pixel( uint32_t pId ) : 
     pixelId( pId ),
@@ -120,7 +125,113 @@ inline const std::string bounceHeader = raysLayout + structs + R"(
     {
         vec4 normals[];
     };
+
+    layout(std430, binding = 5) buffer Scans
+    {
+        uint scans[];
+    };
 )";
+
+inline const std::string compactRaysScan = raysLayout + structs + R"(
+
+    layout(std430, binding = 0) buffer Rays
+    {
+        Ray rays[];
+    };
+
+    layout(std430, binding = 1) buffer Scans
+    {
+        uint scans[];
+    };
+
+    void main()
+    {
+        uint id = gl_GlobalInvocationID.x;
+
+        if( id >= scans.length() ) return;  
+
+        for( uint i = 1; i < scans.length(); i *= 2 ) {
+
+            uint id1 = id + 1;
+            uint idx1 = id1 * i * 2;
+            
+            uint idx0 = idx1 - 1;
+            
+            if (idx0 < scans.length())
+            {
+                scans[idx0] += scans[idx0 - i];
+            }
+            // scan[ idx0 ] = extract[ idx0 - i ] + extract[ idx0 ];
+            barrier();
+        }
+
+        if (id == 0u) {
+            scans[scans.length() - 1] = 0u;
+        }
+
+        barrier();
+
+        for( uint i = scans.length() / 2; i > 0; i /= 2 ) {
+
+            uint id1 = id + 1;
+            uint idx1 = id1 * i * 2;
+            
+            uint idx0 = idx1 - 1;
+
+            uint idxRight0 = idx0;
+            uint idxLeft0 = idx0 - i;
+
+            
+            if (idx0 < scans.length())
+            {
+                uint t = scans[idxLeft0];
+                scans[idxLeft0] = scans[idxRight0];
+                scans[idxRight0] += t;
+            }
+
+            barrier();
+        }
+    }
+)";  
+
+inline const std::string compactRaysScatterSrc = raysLayout + structs + R"(
+
+    layout(std430, binding = 0) buffer Rays
+    {
+        Ray rays[];
+    };
+    
+    layout(std430, binding = 1) buffer Scans
+    {
+        uint scans[];
+    };
+
+    layout(std430, binding = 2) buffer OutputRays
+    {
+        Ray outputRays[];
+    };
+
+    layout(std430, binding = 3) buffer RayCount
+    {
+        uint rayCount;
+    };
+
+    void main()
+    {
+        uint id = gl_GlobalInvocationID.x;
+
+        if( id >= rayCount ) return;  
+
+        if( rays[id].dead == 0u ) {
+            uint dst = scans[id];
+            outputRays[dst] = rays[id];
+        }
+
+        if( id == 0u ) {
+            rayCount = scans[ rayCount - 1 ] + 1u - rays[rayCount - 1].dead;
+        }
+    }
+)";  
 
 inline const std::string evalBouncesSrc = raysLayout + structs + R"(
 
@@ -172,7 +283,7 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
         
         if( id >= rays.length() ) return;
 
-        if( rays[id].matId < 0 ) {
+        if( scans[id] == 1u ) {
             // pixels[id].L = vec4(0.f);
             return;
         }
@@ -314,6 +425,8 @@ inline const std::string generatePrimaryRaySrc = generatePrimaryRayHeader + R"(
         rays[id].tmax = 1e30f;
         rays[id].t = -1.0;
         rays[id].triId = -1;
+        rays[id].dead = 0;
+        rays[id].pixelId = id;
     }
 
 )";

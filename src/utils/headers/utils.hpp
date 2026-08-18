@@ -42,7 +42,20 @@ class Buffer {
     public:
     Buffer( GLenum target, GLsizeiptr size, const void * data, GLenum usage );
     void toGPU( GLuint index );
-    void toCPU();
+    template<typename T> std::vector<T> toCPU() {
+        std::vector<T> v(size / sizeof(T));
+  
+        glBindBuffer(target, buffer);
+
+        glGetBufferSubData(
+            target,
+            0,
+            size,
+            v.data()
+        );
+
+        return v;
+    };
 
     template<typename T>
     T* get() {
@@ -88,12 +101,55 @@ class Buffer {
         }
     }
 
+    Buffer(Buffer&& other) noexcept
+        : buffer(other.buffer),
+          target(other.target),
+          size(other.size),
+          data(other.data)
+    {
+        other.buffer = 0;
+        other.target = 0;
+        other.size = 0;
+        other.data = nullptr;
+    }
+
+    Buffer& operator=(Buffer&& other) noexcept
+    {
+        if (this != &other) {
+
+            if (buffer)
+                glDeleteBuffers(1, &buffer);
+
+            if (data)
+                ::operator delete(data, std::align_val_t(16));
+
+            buffer = other.buffer;
+            target = other.target;
+            size   = other.size;
+            data   = other.data;
+
+            other.buffer = 0;
+            other.target = 0;
+            other.size   = 0;
+            other.data   = nullptr;
+        }
+
+        return *this;
+    }
+
     ~Buffer()
     {
-        glDeleteBuffers(1, &buffer);
+        if( buffer ) {
 
-        if (data)
-            ::operator delete(data, std::align_val_t(16));
+            glDeleteBuffers(1, &buffer);
+            buffer = 0;
+        }
+
+        // if (data) {
+
+        //     ::operator delete(data, std::align_val_t(16));
+        //     data = nullptr;
+        // }
     }
 };
 
@@ -131,6 +187,8 @@ inline const std::string structs = R"(
         float tmax;
         float t;
         uint triId;
+        uint dead;
+        uint pixelId;
         int matId;
     };
 
