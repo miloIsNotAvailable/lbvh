@@ -11,7 +11,7 @@ Buffer blellochScan( Buffer &input, uint32_t size, uint32_t wgSize ) {
     Program scanSums( scanScanSrc );
     Program addSums( addScansSrc );
 
-    while( wgSumSize >= wgSize ) {
+    while( wgSumSize > 1 ) {
 
         Buffer flagsSSBO(
             GL_SHADER_STORAGE_BUFFER,

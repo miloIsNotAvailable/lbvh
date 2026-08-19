@@ -130,6 +130,11 @@ inline const std::string bounceHeader = raysLayout + structs + R"(
     {
         uint scans[];
     };
+    
+    layout(std430, binding = 6) buffer RayCount
+    {
+        uint activeRays;
+    };
 )";
 
 
@@ -162,15 +167,44 @@ inline const std::string compactRaysScatterSrc = raysLayout + structs + R"(
         if( id >= rayCount ) return;  
 
         if( rays[id].dead == 0u ) {
-            uint dst = scans[id];
+            uint dst = id - scans[id];
             outputRays[dst] = rays[id];
         }
 
-        if( id == 0u ) {
-            rayCount = scans[ rayCount - 1 ] + 1u - rays[rayCount - 1].dead;
-        }
+        // if( id == 0u ) {
+        //     rayCount = scans[ rayCount - 1 ] + 1u - rays[rayCount - 1].dead;
+        // }
     }
 )";  
+
+inline const std::string updateRayCountSrc = raysLayout + structs + R"(
+
+    layout(std430, binding = 0) buffer Rays
+    {
+        Ray rays[];
+    };
+    
+    layout(std430, binding = 1) buffer Scans
+    {
+        uint scans[];
+    };
+
+
+    layout(std430, binding = 2) buffer RayCount
+    {
+        uint rayCount;
+    };
+
+    void main()
+    {
+        uint id = gl_GlobalInvocationID.x;
+        if( rayCount == 0u ) return;
+
+        uint deadTotal = scans[ rayCount - 1 ] + rays[rayCount - 1].dead;
+
+        rayCount = rayCount - deadTotal;
+    }
+)";
 
 inline const std::string evalBouncesSrc = raysLayout + structs + R"(
 
@@ -220,20 +254,21 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
     {
         uint id = gl_GlobalInvocationID.x;
         
-        if( id >= rays.length() ) return;
+        if( id >= activeRays ) return;
 
-        if( scans[id] == 1u ) {
-            // pixels[id].L = vec4(0.f);
-            return;
-        }
+        // if( scans[id] == 1u ) {
+        //     // pixels[id].L = vec4(0.f);
+        //     return;
+        // }
 
         uint matIdx = uint(rays[id].matId);
         uint triIdx = uint(rays[id].triId);
+        uint pixelId = uint( rays[id].pixelId );
 
         vec4 pos = rays[id].o + rays[id].t * rays[id].dir;
 
         vec3 color = materials[matIdx].diffuse.xyz / PI;
-        vec3 beta = pixels[id].beta.xyz;
+        vec3 beta = pixels[pixelId].beta.xyz;
         vec3 nor = normals[triIdx].xyz;
         vec3 lightPos = vec3( 0., 200., 0. );
         float r = 10.;
@@ -260,12 +295,13 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
 
         // pixels[id].L += materials[matIdx].diffuse;
         float occ = 1.f - float(shadowRays[id].occluded);
-        pixels[id].L  += vec4(occ * beta * color * Li * cosTheta, 0.f);
-        // pixels[id].L  += vec4(color, 0.f);
+        
+        // if( cosThetaL > 0.f && cosTheta > 0.f ) 
+        pixels[pixelId].L  += vec4(occ * beta * color * Li * cosTheta, 0.f);
         
 
-        float bx = rand( pixels[id].state );
-        float by = rand( pixels[id].state );
+        float bx = rand( pixels[pixelId].state );
+        float by = rand( pixels[pixelId].state );
         
         vec3 bounceDir = RandomUnitVectorInHemisphereOf( nor, vec2(bx, by) );
         
@@ -274,7 +310,7 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
 
         pdf = cosTheta / PI; 
 
-        pixels[id].beta *= vec4(color * cosTheta / pdf, 0.f);
+        pixels[pixelId].beta *= vec4(color * cosTheta / pdf, 0.f);
 
         rays[id].o = pos + vec4(nor * EPS, 0.f);
         rays[id].dir = vec4( bounceDir, 0.f );
@@ -396,6 +432,11 @@ inline const std::string generateShadowRaysHeader = raysLayout + structs + R"(
     {
         vec4 normals[];
     };
+
+    layout(std430, binding = 5) buffer RayCount
+    {
+        uint raysActive;
+    };
 )";
 
 inline const std::string generateShadowRaySrc = generateShadowRaysHeader + R"(
@@ -404,12 +445,13 @@ inline const std::string generateShadowRaySrc = generateShadowRaysHeader + R"(
     {
         uint id = gl_GlobalInvocationID.x;
         
-        if( id >= rays.length() ) return;
+        if( id >= raysActive ) return;
 
         if( rays[id].t == -1 ) return;
 
         vec4 pos = rays[id].o + rays[id].t * rays[id].dir;
-        
+        uint pixelId = uint( rays[id].pixelId );
+
         // Triangle tri = triangles[rays[id].triId];
         // vec3 nor = normalize(cross(
         //     tri.v.xyz - tri.u.xyz,
@@ -424,8 +466,8 @@ inline const std::string generateShadowRaySrc = generateShadowRaysHeader + R"(
         float r = 10.;
 
         // uint state = id * 747796405u + 2891336453u;
-        float zx = rand(pixels[id].state);
-        float zy = rand(pixels[id].state);
+        float zx = rand(pixels[pixelId].state);
+        float zy = rand(pixels[pixelId].state);
 
         float rndTheta = zx * 2. * PI;
         float rndZ = zy * 2. - 1.;

@@ -98,7 +98,7 @@ void main()
 inline const std::string addScansSrc = R"(
 #version 430
 
-layout(local_size_x = 2) in;
+layout(local_size_x = 64) in;
 
 layout(std430, binding = 0) buffer PScans
 {

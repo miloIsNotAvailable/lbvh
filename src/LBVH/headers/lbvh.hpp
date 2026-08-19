@@ -248,6 +248,11 @@ inline const std::string traverseRayHeader = layout + structs + R"(
         uint scan[];
     };
 
+    layout(std430, binding = 5) buffer RayCount
+    {
+        uint activeRays;
+    };
+
     layout(std140, binding = 0) uniform Sizes
     {
         uint N;
@@ -340,10 +345,14 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
     {
         uint id = gl_GlobalInvocationID.x;
 
-        if (id >= rays.length())
+        if (id >= activeRays)
             return;
 
         Ray ray = rays[id];
+
+        if( ray.dead == 1u ) {
+            return;
+        }
 
         const int STACK_SIZE = 64;
 
@@ -415,7 +424,7 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         // rays[ id ].hit = ray.o + closestT * ray.dir;
         if( closestT >= 1e10f ) {
         
-            // hits[id].hit = vec4( 0. );
+            // hits[id].hit = vec4( -1. );
             // hits[id].t = -1.;
             // hits[id].color = vec4(0.);
             rays[id].t = -1;
@@ -458,6 +467,11 @@ inline const std::string traverseShadowRayHeader = layout + structs + R"(
     layout(std430, binding = 3) buffer ShadowRays
     {
         ShadowRay shadowRays[];
+    };
+
+    layout(std430, binding = 4) buffer RayCount
+    {
+        uint activeRays;
     };
 
     layout(std140, binding = 0) uniform Sizes
@@ -538,7 +552,7 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
     {
         uint id = gl_GlobalInvocationID.x;
 
-        if (id >= shadowRays.length())
+        if (id >= activeRays)
             return;
 
         ShadowRay ray = shadowRays[id];

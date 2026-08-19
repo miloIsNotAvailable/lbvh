@@ -137,6 +137,33 @@ class Buffer {
         return *this;
     }
 
+    Buffer(const Buffer& other)
+        : target(other.target),
+        size(other.size),
+        data(nullptr)
+    {
+        glGenBuffers(1, &buffer);
+
+        glBindBuffer(target, buffer);
+        glBufferData(
+            target,
+            size,
+            nullptr,
+            GL_DYNAMIC_COPY
+        );
+
+        glBindBuffer(GL_COPY_READ_BUFFER, other.buffer);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, buffer);
+
+        glCopyBufferSubData(
+            GL_COPY_READ_BUFFER,
+            GL_COPY_WRITE_BUFFER,
+            0,
+            0,
+            size
+        );
+    }
+
     ~Buffer()
     {
         if( buffer ) {

@@ -250,24 +250,24 @@ int main()
 
 
     //   0011 2223 3444 5555
-    std::vector<uint32_t> flags = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1 };
+    // std::vector<uint32_t> flags = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1 };
     
-    flags.resize( 64, 0 );
+    // flags.resize( 64, 0 );
 
-    uint32_t wgSize = 64;
+    // uint32_t wgSize = 64;
    
-    Buffer e(
-        GL_SHADER_STORAGE_BUFFER,
-        flags.size() * sizeof(uint32_t),
-        flags.data(),
-        GL_DYNAMIC_COPY  
-    );
-    Buffer out = blellochScan( e, flags.size(), wgSize );
+    // Buffer e(
+    //     GL_SHADER_STORAGE_BUFFER,
+    //     flags.size() * sizeof(uint32_t),
+    //     flags.data(),
+    //     GL_DYNAMIC_COPY  
+    // );
+    // Buffer out = blellochScan( e, flags.size(), wgSize );
 
-    std::vector<uint32_t> c = out.toCPU<uint32_t>();
-    for( int i = 0; i < c.size(); i++ ) {
-        printf( "%d,", c[i] );
-    }
+    // std::vector<uint32_t> c = out.toCPU<uint32_t>();
+    // for( int i = 0; i < c.size(); i++ ) {
+    //     printf( "%d,", c[i] );
+    // }
     
     std::cout << "\n\n";
     
@@ -403,11 +403,11 @@ int main()
         // trianglesSortedSSBO.toGPU(6);
     }
 
-    std::vector<uint32_t> triOut = triIdsA.toCPU<uint32_t>();
-    for( auto& i: triOut ) {
-        printf( "%d ", i );
-    }
-    printf( "\n" );
+    // std::vector<uint32_t> triOut = triIdsA.toCPU<uint32_t>();
+    // for( auto& i: triOut ) {
+    //     printf( "%d ", i );
+    // }
+    // printf( "\n" );
 
     // Program reorder( radixReorderTrianglesSrc );
     // reorder( groups, 1, 1 );
@@ -467,6 +467,8 @@ int main()
     // matSSBO.toGPU(6);
     // pixelSSBO.toGPU(7);
 
+    size_t raysSizePadded = ((pixels.size() + THREADS - 1) / THREADS) * THREADS;
+
     Buffer traverseSSBO(
         GL_SHADER_STORAGE_BUFFER,
         rays.size() * sizeof(Ray),
@@ -525,7 +527,7 @@ int main()
 
     Buffer rayActiveSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        rays.size() * sizeof( uint32_t ),
+        raysSizePadded * sizeof( uint32_t ),
         nullptr,
         GL_DYNAMIC_COPY
     );
@@ -547,7 +549,14 @@ int main()
     
     Program generateShadowRays( generateShadowRaySrc );
     Program traceShadowRays( traverseShadowRaySrc );
+    Program compactRaysScatter( compactRaysScatterSrc );
+    Program updateRayCount( updateRayCountSrc );
     
+    GLuint query;
+    glGenQueries(1, &query);
+
+    glBeginQuery(GL_TIME_ELAPSED, query);
+
     const int MAX_ITER = 30;
     for( int i = 0; i < MAX_ITER; i ++ ) {
 
@@ -556,6 +565,9 @@ int main()
         cameraUBO.toGPU( 1 );
     
         generatePrimaryRays( groups, 1, 1 );
+        barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        
+        rayCountSSBO.update( &rSize, sizeof(uint32_t) );
         barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
         
         for( int bounces = 0; bounces < 7; bounces ++ ) {
@@ -565,31 +577,54 @@ int main()
             bvhSSBO.toGPU( 2 );
             traverseSSBO.toGPU( 3 );
             rayActiveSSBO.toGPU( 4 );
+            rayCountSSBO.toGPU( 5 );
             triangleSizeUBO.toGPU( 0 );
             
             traverse( groups, 1, 1 );
-            barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+            barrier(GL_SHADER_STORAGE_BARRIER_BIT);
             
-            // trianglesSSBO.toGPU( 0 );
-            // bvhSSBO.toGPU( 1 );
+            // if( bounces > 3 ) {
+                
+            //     Buffer scanned = blellochScan( rayActiveSSBO, raysSizePadded, THREADS );
+                
+            //     traverseSSBO.toGPU( 0 );
+            //     scanned.toGPU( 1 );
+            //     rayCompactedSSBO.toGPU( 2 );
+            //     rayCountSSBO.toGPU( 3 );
+                
+            //     compactRaysScatter( groups, 1, 1 );
+            //     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                
+            //     traverseSSBO.toGPU( 0 );
+            //     scanned.toGPU( 1 );
+            //     rayCountSSBO.toGPU( 2 );
+                
+            //     updateRayCount( 1, 1, 1 );
+            //     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+                
+            //     std::swap( traverseSSBO, rayCompactedSSBO );
+            // }
         
             trianglesSSBO.toGPU( 0 );
             traverseSSBO.toGPU( 1 );
             pixelSSBO.toGPU( 2 );
             shadowRaySSBO.toGPU( 3 );
             normalsSSBO.toGPU( 4 );
+            rayCountSSBO.toGPU( 5 );
         
             generateShadowRays( groups, 1, 1 );
             
-            barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+            barrier( GL_SHADER_STORAGE_BARRIER_BIT );
         
             trianglesSSBO.toGPU( 0 );
-            bvhSSBO.toGPU( 1 );
-            shadowRaySSBO.toGPU( 2 );
+            triIdsA.toGPU( 1 );
+            bvhSSBO.toGPU( 2 );
+            shadowRaySSBO.toGPU( 3 );
+            rayCountSSBO.toGPU( 4 );
         
             traceShadowRays( groups, 1, 1 );
         
-            barrier( GL_BUFFER_UPDATE_BARRIER_BIT );
+            barrier( GL_SHADER_STORAGE_BARRIER_BIT );
         
             // shadowRaySSBO.toCPU();
         
@@ -605,16 +640,32 @@ int main()
             shadowRaySSBO.toGPU( 3 );
             normalsSSBO.toGPU( 4 );
             rayActiveSSBO.toGPU( 5 );
-            
+            rayCountSSBO.toGPU( 6 );
+
             bounce( groups, 1, 1 );
-            barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+            barrier(GL_SHADER_STORAGE_BARRIER_BIT);
         }
         
         pixelSSBO.toGPU( 0 );
         evalBounce( groups, 1, 1 );
-        barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        barrier(GL_SHADER_STORAGE_BARRIER_BIT);
     }
 
+    glEndQuery(GL_TIME_ELAPSED);
+
+    GLuint64 elapsedNs;
+    glGetQueryObjectui64v(
+        query,
+        GL_QUERY_RESULT,
+        &elapsedNs
+    );
+
+    double elapsedMs = elapsedNs / 1'000'000.0;
+
+    // with compaction 2.377s
+    printf("GPU time: %.3f s\n", elapsedMs * .001);
+
+    glDeleteQueries(1, &query);
 
     // hitSSBO.toCPU();
     std::vector<Ray> res = traverseSSBO.toCPU<Ray>();
