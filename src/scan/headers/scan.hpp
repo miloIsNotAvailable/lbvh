@@ -14,24 +14,29 @@ struct Scan {
     {}
 };
 
-Buffer blellochScan( std::vector<uint32_t> flags, uint32_t wgSize );
+Buffer blellochScan( Buffer &input, uint32_t size, uint32_t wgSize );
 
 inline const std::string scanScanSrc = R"(
 #version 430
 
-layout(local_size_x = 2) in;
+layout(local_size_x = 64) in;
 
-layout(std430, binding = 0) buffer Scans
+layout(std430, binding = 0) buffer Input
+{
+    uint input[];
+};
+
+layout(std430, binding = 1) buffer Scans
 {
     uint scan[];
 };
 
-layout(std430, binding = 1) buffer WgScans
+layout(std430, binding = 2) buffer WgScans
 {
     uint wgSum[];
 };
 
-const uint THREADS = 2u;
+const uint THREADS = 64u;
 shared uint temp[ THREADS ];
 
 void main()
@@ -40,7 +45,7 @@ void main()
     uint lid = gl_LocalInvocationID.x;
     uint wid = gl_WorkGroupID.x;
 
-    temp[lid] = gid < scan.length() ? scan[gid] : 0u;
+    temp[lid] = gid < input.length() ? input[gid] : 0u;
     barrier();
 
     for( uint i = 1; i < THREADS; i *= 2 ) {

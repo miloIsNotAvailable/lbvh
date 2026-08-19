@@ -17,7 +17,7 @@ inline const std::string mortonHeader = mortonLayout + structs + R"(
     
     layout(std430, binding = 0) buffer Morton
     {
-        uvec2 morton[];
+        uint morton[];
     };
     
     layout(std430, binding = 1) buffer Data
@@ -70,6 +70,6 @@ inline const std::string mortonSrc = mortonHeader + R"(
 
         // uint idx = id << 30;
 
-        morton[ id ] = uvec2( m, id );
+        morton[ id ] = m;
     }
 )";

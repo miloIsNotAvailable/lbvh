@@ -1,10 +1,13 @@
 #include <scan.hpp>
 
-Buffer blellochScan( std::vector<uint32_t> flags, uint32_t wgSize ) {
-        std::vector<Scan> levels;
-    size_t wgSumSize = flags.size();
+Buffer blellochScan( Buffer &input, uint32_t size, uint32_t wgSize ) {
+    std::vector<Scan> levels;
+    size_t wgSumSize = size;
 
-    std::vector<uint32_t> scanData = flags;
+    // std::vector<uint32_t> scanData = flags;
+
+    Buffer *curr = &input; 
+
     Program scanSums( scanScanSrc );
     Program addSums( addScansSrc );
 
@@ -13,7 +16,7 @@ Buffer blellochScan( std::vector<uint32_t> flags, uint32_t wgSize ) {
         Buffer flagsSSBO(
             GL_SHADER_STORAGE_BUFFER,
             wgSumSize * sizeof(uint32_t),
-            scanData.data(),
+            nullptr,
             GL_DYNAMIC_COPY
         );
 
@@ -26,17 +29,19 @@ Buffer blellochScan( std::vector<uint32_t> flags, uint32_t wgSize ) {
             GL_DYNAMIC_COPY
         );
 
-        flagsSSBO.toGPU(0);
-        wgSumSSBO.toGPU(1);
+        curr->toGPU(0);
+        flagsSSBO.toGPU(1);
+        wgSumSSBO.toGPU(2);
 
         scanSums( wgSumSize, 1, 1 );
         barrier( GL_ALL_BARRIER_BITS );
 
-        scanData = wgSumSSBO.toCPU<uint32_t>();
+        // scanData = wgSumSSBO.toCPU<uint32_t>();
 
         Scan scan_( std::move(flagsSSBO), std::move(wgSumSSBO), wgSumSize );
-
         levels.push_back( std::move( scan_ ) );       
+
+        curr = &levels.back().sum;
     }
 
     for( int i = levels.size() - 1; i > 0; i-- ) {
@@ -54,7 +59,8 @@ Buffer blellochScan( std::vector<uint32_t> flags, uint32_t wgSize ) {
         
         // GLuint groups = (child.sumSize + wgSize - 1) / wgSize;
         addSums( child.sumSize, 1, 1 );
-        
+        barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
         // printf( "%d\n", i );
         // for( int i = 0; i < p.size(); i++ ) {
         //     printf( "%d,", p[i] );

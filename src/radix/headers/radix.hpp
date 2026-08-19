@@ -96,15 +96,31 @@ inline const std::string header = radixLayout + structs + R"(
 )";
 
 
-inline const std::string radixExtractSrc = header + R"(
+inline const std::string radixExtractSrc = radixLayout + structs + R"(
+
+layout(std430, binding = 0) buffer Data
+{
+    uint input[];
+};
+
+layout(std430, binding = 1) buffer Extract
+{
+    uint extract[];
+};
+
+layout(std140, binding = 0) uniform Params
+{
+    uint bit;
+};
+
 void main()
 {
     uint id = gl_GlobalInvocationID.x;
 
     if( id >= extract.length() ) return;
 
-    extract[id].x = 1u - ((input[id].x >> bit) & 1u);
-    extract[id].y = input[id].y;
+    extract[id] = 1u - ((input[id] >> bit) & 1u);
+    // extract[id].y = input[id].y;
 }
 )";
 
@@ -156,33 +172,63 @@ void main()
 }
 )";
 
-inline const std::string radixScatterSrc = header + R"(
+inline const std::string radixScatterSrc = radixLayout + structs + R"(
+
+layout(std430, binding = 0) buffer Data
+{
+    uint morton[];
+};
+
+layout(std430, binding = 1) buffer Scan
+{
+    uint scanned[];
+};
+
+layout(std430, binding = 2) buffer trIds
+{
+    uint triIds[];
+};
+
+layout(std430, binding = 3) buffer OutMorton
+{
+    uint outMorton[];
+};
+
+layout(std430, binding = 4) buffer OuttrIds
+{
+    uint outTriIds[];
+};
+
+layout(std140, binding = 0) uniform Params
+{
+    uint bit;
+};
+
 void main()
 {
     uint id = gl_GlobalInvocationID.x;
 
-    if (id >= input.length())
+    if (id >= morton.length())
         return;
 
-    uint b = (input[id].x >> bit) & 1u;
+    uint b = (morton[id] >> bit) & 1u;
 
-    uint totalZeros = extract[extract.length() - 1].x + 
-                    (1u - ((input[extract.length() - 1].x >> bit) & 1u));
+    uint totalZeros = scanned[morton.length() - 1] +  (1u - ((morton[morton.length() - 1] >> bit) & 1u));
 
     uint ind;
 
     if (b == 0u)
     {
-        ind = extract[id].x;
+        ind = scanned[id];
     }
     else
     {
-        uint onesBefore = id - extract[id].x;
+        uint onesBefore = id - scanned[id];
         ind = totalZeros + onesBefore;
     }
 
-    outputData[ind] = input[id];
-    // trianglesOut[ind] = triangles[id];
+    outMorton[ind] = morton[id];
+    outTriIds[ind] = triIds[id];
     }
 )";
 

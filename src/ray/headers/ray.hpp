@@ -132,67 +132,6 @@ inline const std::string bounceHeader = raysLayout + structs + R"(
     };
 )";
 
-inline const std::string compactRaysScan = raysLayout + structs + R"(
-
-    layout(std430, binding = 0) buffer Rays
-    {
-        Ray rays[];
-    };
-
-    layout(std430, binding = 1) buffer Scans
-    {
-        uint scans[];
-    };
-
-    void main()
-    {
-        uint id = gl_GlobalInvocationID.x;
-
-        if( id >= scans.length() ) return;  
-
-        for( uint i = 1; i < scans.length(); i *= 2 ) {
-
-            uint id1 = id + 1;
-            uint idx1 = id1 * i * 2;
-            
-            uint idx0 = idx1 - 1;
-            
-            if (idx0 < scans.length())
-            {
-                scans[idx0] += scans[idx0 - i];
-            }
-            // scan[ idx0 ] = extract[ idx0 - i ] + extract[ idx0 ];
-            barrier();
-        }
-
-        if (id == 0u) {
-            scans[scans.length() - 1] = 0u;
-        }
-
-        barrier();
-
-        for( uint i = scans.length() / 2; i > 0; i /= 2 ) {
-
-            uint id1 = id + 1;
-            uint idx1 = id1 * i * 2;
-            
-            uint idx0 = idx1 - 1;
-
-            uint idxRight0 = idx0;
-            uint idxLeft0 = idx0 - i;
-
-            
-            if (idx0 < scans.length())
-            {
-                uint t = scans[idxLeft0];
-                scans[idxLeft0] = scans[idxRight0];
-                scans[idxRight0] += t;
-            }
-
-            barrier();
-        }
-    }
-)";  
 
 inline const std::string compactRaysScatterSrc = raysLayout + structs + R"(
 

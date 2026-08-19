@@ -15,6 +15,7 @@
 #include <lens.hpp>
 #include "stb_image_write.h"
 #include <scan.hpp>
+#include <numeric>
 
 // std::vector<Triangle> triangles = {
 //     Triangle(
@@ -136,9 +137,9 @@ int main()
     aabb.bmin -= center;
     aabb.bmax -= center;
 
-    size_t p = 1;
-    while (p < obj.triangles.size())
-        p <<= 1;
+    // size_t p = 1;
+    // while (p < obj.triangles.size())
+    //     p <<= 1;
 
     Triangle dummy(
         glm::vec3(1e10f, 1e10f, 1e10f),
@@ -146,9 +147,9 @@ int main()
         glm::vec3(1e10f, 1e10f, 1e10f)
     );
 
-    dummy.matId = -1;
+    // dummy.matId = -1;
 
-    obj.triangles.resize( p, dummy );
+    // obj.triangles.resize( p, dummy );
     
     // for (size_t i = 0; i < obj.triangles.size(); ++i) {
     //     const Triangle& t = obj.triangles[i];
@@ -207,51 +208,6 @@ int main()
         // Pixel p( i );
         pixels.emplace_back( i );
     }
-
-    // for (const Triangle& tri : obj.triangles) {
-    //     // printf( "%f, %f, %f\n", tri.u.x, tri.u.y, tri.u.z );
-    //     glm::vec3 A = tri.u;
-    //     glm::vec3 B = tri.v;
-    //     glm::vec3 C = tri.w;
-
-    //     glm::vec3 dir = glm::normalize(
-    //         glm::cross(B - A, C - A)
-    //     );
-
-    //     glm::vec3 center = (A + B + C) / 3.0f;
-
-    //     // glm::vec3 jitter(
-    //     //     ((float)rand() / RAND_MAX) * 0.2f - 0.1f,
-    //     //     ((float)rand() / RAND_MAX) * 0.2f - 0.1f,
-    //     //     ((float)rand() / RAND_MAX) * 0.2f - 0.1f
-    //     // );
-
-    //     glm::vec3 o =
-    //         center +
-    //         dir * -10.0f;
-
-    //     rays.push_back(Ray{
-    //         glm::vec4( o, 0.f ),
-    //         glm::vec4(dir, 0.f),
-    //         glm::vec4(0.0f),
-    //         0.f, 1e30f
-    //     });
-    // }
-
-    // for( auto& t : triangles ) {
-    
-    //     printf( "%f, %f, %f\n", t.c.x, t.c.y, t.c.z );
-
-    //     glm::vec3 norm = (t.c - aabb.bmin) / (aabb.bmax - aabb.bmin) ;
-
-    //     t.quantized = glm::uvec3(norm * 1023.f);
-
-    //     printf("%u, %u, %u\n",
-    //         t.quantized.x,
-    //         t.quantized.y,
-    //         t.quantized.z);
-    // }
-
     
     if (!glfwInit())
     {
@@ -296,78 +252,17 @@ int main()
     //   0011 2223 3444 5555
     std::vector<uint32_t> flags = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1 };
     
-    uint32_t wgSize = 2;
+    flags.resize( 64, 0 );
+
+    uint32_t wgSize = 64;
    
-    // std::vector<Scan> levels;
-    // size_t wgSumSize = flags.size();
-
-    // std::vector<uint32_t> scanData = flags;
-    // Program scanSums( scanScanSrc );
-    // Program addSums( addScansSrc );
-
-    // while( wgSumSize >= wgSize ) {
-
-    //     Buffer flagsSSBO(
-    //         GL_SHADER_STORAGE_BUFFER,
-    //         wgSumSize * sizeof(uint32_t),
-    //         scanData.data(),
-    //         GL_DYNAMIC_COPY
-    //     );
-
-    //     wgSumSize = (wgSumSize + wgSize - 1) / wgSize;
-
-    //     Buffer wgSumSSBO(
-    //         GL_SHADER_STORAGE_BUFFER,
-    //         wgSumSize * sizeof(uint32_t),
-    //         nullptr,
-    //         GL_DYNAMIC_COPY
-    //     );
-
-    //     flagsSSBO.toGPU(0);
-    //     wgSumSSBO.toGPU(1);
-
-    //     scanSums( wgSumSize, 1, 1 );
-    //     barrier( GL_ALL_BARRIER_BITS );
-
-    //     scanData = wgSumSSBO.toCPU<uint32_t>();
-
-    //     Scan scan_( std::move(flagsSSBO), std::move(wgSumSSBO), wgSumSize );
-
-    //     levels.push_back( std::move( scan_ ) );       
-    // }
-
-    // for( int i = levels.size() - 1; i > 0; i-- ) {
-    //     // Scan &l = levels[i];
-    //     // std::vector<uint32_t> t = l.sum.toCPU<uint32_t>();
-        
-    //     Scan& parent = levels[i];
-    //     Scan& child  = levels[i - 1];
-
-    //     std::vector<uint32_t> p = parent.scan.toCPU<uint32_t>();
-    //     std::vector<uint32_t> c = child.scan.toCPU<uint32_t>();
-
-    //     parent.scan.toGPU( 0 );
-    //     child.scan.toGPU( 1 );
-        
-    //     // GLuint groups = (child.sumSize + wgSize - 1) / wgSize;
-    //     printf( "%d\n", i );
-    //     addSums( child.sumSize, 1, 1 );
-
-    //     for( int i = 0; i < p.size(); i++ ) {
-    //         printf( "%d,", p[i] );
-    //     }
-        
-    //     std::cout << "\n";
-
-    //     for( int i = 0; i < c.size(); i++ ) {
-    //         printf( "%d,", c[i] );
-    //     }
-        
-    //     std::cout << "\n\n";
-        
-    // }
-
-    Buffer out = blellochScan( flags, wgSize );
+    Buffer e(
+        GL_SHADER_STORAGE_BUFFER,
+        flags.size() * sizeof(uint32_t),
+        flags.data(),
+        GL_DYNAMIC_COPY  
+    );
+    Buffer out = blellochScan( e, flags.size(), wgSize );
 
     std::vector<uint32_t> c = out.toCPU<uint32_t>();
     for( int i = 0; i < c.size(); i++ ) {
@@ -376,6 +271,10 @@ int main()
     
     std::cout << "\n\n";
     
+    int THREADS = 64;
+    size_t N = obj.triangles.size();
+    obj.triangles.resize( ((obj.triangles.size() + THREADS - 1) / THREADS) * THREADS, dummy );
+
     Buffer trianglesSSBO(
         GL_SHADER_STORAGE_BUFFER,
         obj.triangles.size() * sizeof(Triangle),
@@ -385,7 +284,7 @@ int main()
 
     Buffer mortonSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        obj.triangles.size() * sizeof(glm::uvec2),
+        obj.triangles.size() * sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY
     );
@@ -397,36 +296,29 @@ int main()
         GL_DYNAMIC_COPY
     );
 
-    mortonSSBO.toGPU(0);
-    trianglesSSBO.toGPU(1);
-    sceneUBO.toGPU(0);
 
     GLuint numElements = static_cast<GLuint>(rays.size());
     GLuint localSize   = 64;
 
-    GLuint groups =
-        (numElements + localSize - 1) / localSize;
+    GLuint groups = (numElements + localSize - 1) / localSize;
 
-    // GLuint quantizeProgram = createQuantizeShader();
-    // GLuint mortonProgram   = createMortonShader();
-
-    // dispatchProgram((triangles.size() + 1 - 1) / 1, 1, 1, quantizeProgram);
-    // dispatchProgram((triangles.size() + 1 - 1) / 1, 1, 1, mortonProgram);
-    
     Program morton( mortonSrc );
-    morton( groups, 1, 1 );
 
+    mortonSSBO.toGPU(0);
+    trianglesSSBO.toGPU(1);
+    sceneUBO.toGPU(0);
+    morton( groups, 1, 1 );
 
     Buffer extractSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        obj.triangles.size() * sizeof(glm::uvec2),
+        obj.triangles.size() * sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY
     );
 
     Buffer outputSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        obj.triangles.size() * sizeof(glm::uvec2),
+        obj.triangles.size() * sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY
     );
@@ -438,18 +330,30 @@ int main()
         GL_DYNAMIC_DRAW
     );
 
-    Buffer trianglesSortedSSBO(
+    std::vector<uint32_t> triIds(obj.triangles.size());
+    std::iota(triIds.begin(), triIds.end(), 0u);
+
+    // triIds.resize( 64, 100 );
+
+    Buffer triIdsA(
         GL_SHADER_STORAGE_BUFFER,
-        obj.triangles.size() * sizeof(Triangle),
+        triIds.size() * sizeof(uint32_t),
+        triIds.data(),
+        GL_DYNAMIC_COPY
+    );
+    
+    Buffer triIdsB(
+        GL_SHADER_STORAGE_BUFFER,
+        triIds.size() * sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY
     );
 
-    trianglesSSBO.toGPU(1);
-    extractSSBO.toGPU(2);
-    outputSSBO.toGPU(3);
-    uniformUBO.toGPU(0);
-    trianglesSortedSSBO.toGPU(6);
+    // trianglesSSBO.toGPU(1);
+    // extractSSBO.toGPU(2);
+    // outputSSBO.toGPU(3);
+    // trianglesSortedSSBO.toGPU(6);
+    // uniformUBO.toGPU(0);
 
     // GLuint extractProgram = createExtractShader();
     // GLuint scanProgram    = createScanShader();
@@ -466,22 +370,32 @@ int main()
             sizeof(i)
         );
 
-        // dispatchProgram(groups, 1, 1, extractProgram);
-        // dispatchProgram(groups, 1, 1, scanProgram);
-        // dispatchProgram(groups, 1, 1, scatterProgram);
+        mortonSSBO.toGPU(0);
+        extractSSBO.toGPU(1);
+        uniformUBO.toGPU(0);
+
         extract( groups, 1, 1 );
         barrier( GL_SHADER_STORAGE_BARRIER_BIT );
-        scan( groups, 1, 1 );
+        
+        // scan( groups, 1, 1 );
+        // barrier( GL_SHADER_STORAGE_BARRIER_BIT );
+        Buffer scanned = blellochScan( extractSSBO, triIds.size(), 64 );
         barrier( GL_SHADER_STORAGE_BARRIER_BIT );
-        scatter( groups, 1, 1 );
 
-        // glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        mortonSSBO.toGPU(0);
+        scanned.toGPU(1);
+        triIdsA.toGPU(2);
+        outputSSBO.toGPU(3);
+        triIdsB.toGPU(4);
+
+        scatter( groups, 1, 1 );
         barrier( GL_SHADER_STORAGE_BARRIER_BIT );
 
         swap(mortonSSBO, outputSSBO);
+        swap(triIdsA, triIdsB);
 
-        mortonSSBO.toGPU(0);
-        outputSSBO.toGPU(3);
+        // mortonSSBO.toGPU(0);
+        // outputSSBO.toGPU(3);
 
         // swap(trianglesSSBO, trianglesSortedSSBO);
 
@@ -489,17 +403,23 @@ int main()
         // trianglesSortedSSBO.toGPU(6);
     }
 
-    Program reorder( radixReorderTrianglesSrc );
-    reorder( groups, 1, 1 );
-    barrier( GL_SHADER_STORAGE_BARRIER_BIT );
+    std::vector<uint32_t> triOut = triIdsA.toCPU<uint32_t>();
+    for( auto& i: triOut ) {
+        printf( "%d ", i );
+    }
+    printf( "\n" );
 
-    // trianglesSortedSSBO.toCPU();
+    // Program reorder( radixReorderTrianglesSrc );
+    // reorder( groups, 1, 1 );
+    // barrier( GL_SHADER_STORAGE_BARRIER_BIT );
 
-    // Triangle* sortedTriangles = trianglesSortedSSBO.get<Triangle>();
+    // // trianglesSortedSSBO.toCPU();
 
-    // std::cout << '\n';
+    // // Triangle* sortedTriangles = trianglesSortedSSBO.get<Triangle>();
 
-    std::vector<Node> nodes(2 * obj.triangles.size() - 1);
+    // // std::cout << '\n';
+
+    std::vector<Node> nodes(2 * N - 1);
 
     Buffer bvhSSBO(
         GL_SHADER_STORAGE_BUFFER,
@@ -536,9 +456,16 @@ int main()
         GL_DYNAMIC_COPY
     );
 
-    bvhSSBO.toGPU(4);
-    matSSBO.toGPU(6);
-    pixelSSBO.toGPU(7);
+    Buffer triangleSizeUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof( uint32_t ),
+        &N,
+        GL_DYNAMIC_COPY
+    );
+
+    // bvhSSBO.toGPU(4);
+    // matSSBO.toGPU(6);
+    // pixelSSBO.toGPU(7);
 
     Buffer traverseSSBO(
         GL_SHADER_STORAGE_BUFFER,
@@ -548,13 +475,22 @@ int main()
         GL_DYNAMIC_COPY
     );
 
-    traverseSSBO.toGPU(5);
+    // traverseSSBO.toGPU(5);
 
     Program lbvh( lbvhSrc );
     Program aabbs( aabbSrc );
-    
+
+    mortonSSBO.toGPU(0);
+    bvhSSBO.toGPU(1);
+    triangleSizeUBO.toGPU(0);
+
     lbvh( groups, 1, 1 );
     barrier( GL_SHADER_STORAGE_BARRIER_BIT );
+
+    bvhSSBO.toGPU(0);
+    trianglesSSBO.toGPU(1);
+    triIdsA.toGPU(2);
+
     aabbs( groups, 1, 1 );
     barrier( GL_SHADER_STORAGE_BARRIER_BIT );
 
@@ -563,6 +499,12 @@ int main()
 
     // GLuint aabbProgram = createAABBShader();
     // dispatchProgram(groups, 1, 1, aabbProgram);
+
+    // std::vector<Node> ef = bvhSSBO.toCPU<Node>();
+    // for( auto& d : ef ) {
+    //     glm::vec4 e = (d.aabb.bmax + d.aabb.bmin) * .5f;
+    //     printf( "%d, %d, %d, %f, %f, %f\n", d.parent, d.left, d.right, e.x, e.y, e.z );
+    // }
 
     mortonSSBO.destroy();
 
@@ -606,7 +548,7 @@ int main()
     Program generateShadowRays( generateShadowRaySrc );
     Program traceShadowRays( traverseShadowRaySrc );
     
-    const int MAX_ITER = 10;
+    const int MAX_ITER = 30;
     for( int i = 0; i < MAX_ITER; i ++ ) {
 
         traverseSSBO.toGPU( 0 );
@@ -619,10 +561,11 @@ int main()
         for( int bounces = 0; bounces < 7; bounces ++ ) {
     
             trianglesSSBO.toGPU( 0 );
-            bvhSSBO.toGPU( 1 );
-            traverseSSBO.toGPU( 2 );
-            rayActiveSSBO.toGPU( 3 );
-            cameraUBO.toGPU( 1 );
+            triIdsA.toGPU( 1 );
+            bvhSSBO.toGPU( 2 );
+            traverseSSBO.toGPU( 3 );
+            rayActiveSSBO.toGPU( 4 );
+            triangleSizeUBO.toGPU( 0 );
             
             traverse( groups, 1, 1 );
             barrier(GL_BUFFER_UPDATE_BARRIER_BIT);

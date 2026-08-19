@@ -19,7 +19,7 @@ inline constexpr const char * header= R"(#version 430
     
     layout(std430, binding = 0) buffer Morton
     {
-        uvec2 morton[];
+        uint morton[];
     };
     
     layout(std430, binding = 1) buffer Data
@@ -115,7 +115,7 @@ GLuint createMortonShader() {
 
         // uint idx = id << 30;
 
-        morton[ id ] = uvec2( m, id );
+        morton[ id ] = m;
     }
     )";
 

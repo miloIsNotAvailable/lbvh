@@ -6,8 +6,8 @@
 struct Node {
     AABB aabb;
     int parent=-1;
-    int left;
-    int right;
+    int left=-1;
+    int right=-1;
     int isLeaf;
     int visited=0;
 };
@@ -58,8 +58,23 @@ inline const std::string lbvhHeader = layout + structs + R"(
     };
 )";
 
-inline const std::string lbvhSrc = lbvhHeader + R"(
+inline const std::string lbvhSrc = layout + structs + R"(
     
+    layout(std430, binding = 0) buffer Morton
+    {
+        uint morton[];
+    };
+
+    layout(std430, binding = 1) buffer Nodes
+    {
+        Node nodes[];
+    };
+
+    layout(std140, binding = 0) uniform Sizes
+    {
+        uint N;
+    };
+
     int clz(uint x)
     {
         return x == 0u ? 32 : 31 - findMSB(x);
@@ -67,8 +82,8 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
 
     int findSplit( int first, int last)
     {
-        uint firstCode = morton[first].x;
-        uint lastCode = morton[last].x;
+        uint firstCode = morton[first];
+        uint lastCode = morton[last];
 
         if (firstCode == lastCode)
             return (first + last) >> 1;
@@ -85,7 +100,7 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
 
             if (newSplit < last)
             {
-                uint splitCode = morton[newSplit].x;
+                uint splitCode = morton[newSplit];
                 int splitPrefix = clz(firstCode ^ splitCode);
                 if (splitPrefix > commonPrefix)
                     split = newSplit; // accept proposal
@@ -98,17 +113,17 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
     
     int delta(uint i, int j)
     {
-        if (j < 0 || j >= morton.length())
+        if (j < 0 || j >= int(N))
             return -1;
 
-        return clz(morton[i].x ^ morton[uint(j)].x);
+        return clz(morton[i] ^ morton[uint(j)]);
     }
 
     void main()
     {
         uint id = gl_GlobalInvocationID.x;
 
-        if (id >= triangles.length() - 1)
+        if (id >= N - 1)
             return;
         
         int L = delta( id, int(id)-1 );
@@ -118,7 +133,7 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
         int deltaMin = delta(id, int(id) - d);
 
         int j = int(id) + d;
-        while( j >= 0 && j < morton.length() && delta(id, j) > deltaMin) {
+        while( j >= 0 && j < int(N) && delta(id, j) > deltaMin) {
             j+=d;
         }
 
@@ -129,14 +144,14 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
         int left;
         if (gamma == first) {
             
-            left = (morton.length() - 1) + gamma;
+            left = int(N - 1) + gamma;
         }  
         else
             left = gamma;
     
         int right;
         if (gamma + 1 == last) {  
-            right = (morton.length() - 1) + gamma + 1;
+            right = int(N - 1) + gamma + 1;
         }
         else
             right = gamma + 1;
@@ -149,17 +164,37 @@ inline const std::string lbvhSrc = lbvhHeader + R"(
     }
     )";
 
-inline const std::string aabbSrc = lbvhHeader + R"(
+inline const std::string aabbSrc = layout + structs + R"(
+
+    layout(std430, binding = 0) buffer Nodes
+    {
+        Node nodes[];
+    };
     
+    layout(std430, binding = 1) buffer Triangles
+    {
+        Triangle triangles[];
+    };
+    
+    layout(std430, binding = 2) buffer TriIds
+    {
+        uint triIds[];
+    };
+
+    layout(std140, binding = 0) uniform Sizes
+    {
+        uint N;
+    };
+
     void main()
     {
         uint id = gl_GlobalInvocationID.x;
 
-        if (id >= triangles.length())
+        if (id >= N)
             return;
 
-        uint triIdx = id;
-        uint leafIdx = id + triangles.length() - 1;
+        uint triIdx = triIds[id];
+        uint leafIdx = id + N - 1;
 
         nodes[leafIdx].aabb = triangles[triIdx].aabb;
 
@@ -193,19 +228,29 @@ inline const std::string traverseRayHeader = layout + structs + R"(
         Triangle triangles[];
     };
 
-    layout(std430, binding = 1) buffer LBVH
+    layout(std430, binding = 1) buffer TriIds
+    {
+        uint triIds[];
+    };
+
+    layout(std430, binding = 2) buffer LBVH
     {
         Node nodes[];
     };
 
-    layout(std430, binding = 2) buffer Rays
+    layout(std430, binding = 3) buffer Rays
     {
         Ray rays[];
     };
 
-    layout(std430, binding = 3) buffer Scans
+    layout(std430, binding = 4) buffer Scans
     {
         uint scan[];
+    };
+
+    layout(std140, binding = 0) uniform Sizes
+    {
+        uint N;
     };
 )";
 
@@ -322,9 +367,10 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
                 continue;
             }
 
-            if( idx >= triangles.length() - 1 ) {
+            if( idx >= N - 1 ) {
 
-                uint trIdx = idx - triangles.length() + 1;
+                // uint trIdx = idx - N + 1;
+                uint trIdx = triIds[idx - N + 1];
 
                 if( triangles[trIdx].matId < 0 )
                     continue;
@@ -399,14 +445,24 @@ inline const std::string traverseShadowRayHeader = layout + structs + R"(
         Triangle triangles[];
     };
 
-    layout(std430, binding = 1) buffer LBVH
+    layout(std430, binding = 1) buffer TriIds
+    {
+        uint triIds[];
+    };
+
+    layout(std430, binding = 2) buffer LBVH
     {
         Node nodes[];
     };
 
-    layout(std430, binding = 2) buffer ShadowRays
+    layout(std430, binding = 3) buffer ShadowRays
     {
         ShadowRay shadowRays[];
+    };
+
+    layout(std140, binding = 0) uniform Sizes
+    {
+        uint N;
     };
 )";
 
@@ -505,9 +561,9 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
                 continue;
             }
 
-            if( idx >= triangles.length() - 1 ) {
+            if( idx >= N - 1 ) {
 
-                uint trIdx = idx - triangles.length() + 1;
+                uint trIdx = triIds[idx - N + 1];
 
                 if( triangles[trIdx].matId < 0 )
                     continue;
