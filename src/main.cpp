@@ -412,7 +412,7 @@ int main()
         // scan( groups, 1, 1 );
         // barrier( GL_SHADER_STORAGE_BARRIER_BIT );
         // Buffer scanned = blellochScan( extractSSBO, triIds.size(), 64 );
-        Buffer scanned = radixScan( extractSSBO, triIds.size(), 64 );
+        Buffer &scanned = radixScan( extractSSBO, triIds.size(), 64 );
         barrier( GL_SHADER_STORAGE_BARRIER_BIT );
 
         mortonSSBO.toGPU(0);
@@ -600,7 +600,7 @@ int main()
 
     glBeginQuery(GL_TIME_ELAPSED, query);
 
-    const int MAX_ITER = 30;
+    const int MAX_ITER = 64;
     for( int i = 0; i < MAX_ITER; i ++ ) {
 
         traverseSSBO.toGPU( 0 );
@@ -626,15 +626,15 @@ int main()
             rayCountSSBO.toGPU( 5 );
             triangleSizeUBO.toGPU( 0 );
             
-            // traverse( groups, 1, 1 );
-            traverse.indirect( indirectDispatchBuffer );
+            traverse( groups, 1, 1 );
+            // traverse.indirect( indirectDispatchBuffer );
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
             
             if( bounces > 3 ) {
                 uint32_t activeCount = rayCountSSBO.toCPU<uint32_t>()[0];
 
                 // Buffer scanned = blellochScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
-                Buffer scanned = compactScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
+                Buffer &scanned = compactScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
                 
                 traverseSSBO.toGPU( 0 );
                 scanned.toGPU( 1 );
@@ -666,8 +666,8 @@ int main()
             normalsSSBO.toGPU( 4 );
             rayCountSSBO.toGPU( 5 );
         
-            // generateShadowRays( groups, 1, 1 );
-            generateShadowRays.indirect( indirectDispatchBuffer );
+            generateShadowRays( groups, 1, 1 );
+            // generateShadowRays.indirect( indirectDispatchBuffer );
 
             barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
         
@@ -677,8 +677,8 @@ int main()
             shadowRaySSBO.toGPU( 3 );
             rayCountSSBO.toGPU( 4 );
         
-            // traceShadowRays( groups, 1, 1 );
-            traceShadowRays.indirect( indirectDispatchBuffer );
+            traceShadowRays( groups, 1, 1 );
+            // traceShadowRays.indirect( indirectDispatchBuffer );
         
             barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
         
@@ -698,14 +698,17 @@ int main()
             rayActiveSSBO.toGPU( 5 );
             rayCountSSBO.toGPU( 6 );
 
-            // bounce( groups, 1, 1 );
-            bounce.indirect( indirectDispatchBuffer );
+            bounce( groups, 1, 1 );
+            // bounce.indirect( indirectDispatchBuffer );
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
         }
         
         pixelSSBO.toGPU( 0 );
         evalBounce( groups, 1, 1 );
         barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        glFinish();
+        printf("FINISHED ITER %d\n", i);
     }
 
     glEndQuery(GL_TIME_ELAPSED);

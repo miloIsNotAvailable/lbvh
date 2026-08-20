@@ -177,8 +177,12 @@ inline const std::string compactRaysScatterSrc = raysLayout + structs + R"(
     }
 )";  
 
-inline const std::string updateRayCountSrc = raysLayout + structs + R"(
+const std::string updateCountLayout = R"(#version 430
 
+    layout(local_size_x = 1) in;)";
+
+inline const std::string updateRayCountSrc = updateCountLayout + structs + R"(
+    
     layout(std430, binding = 0) buffer Rays
     {
         Ray rays[];
