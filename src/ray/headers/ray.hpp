@@ -189,10 +189,16 @@ inline const std::string updateRayCountSrc = raysLayout + structs + R"(
         uint scans[];
     };
 
-
     layout(std430, binding = 2) buffer RayCount
     {
         uint rayCount;
+    };
+
+    layout(std430, binding = 3) buffer Dispatch
+    {
+        uint groupX;
+        uint groupY;
+        uint groupZ;
     };
 
     void main()
@@ -203,6 +209,9 @@ inline const std::string updateRayCountSrc = raysLayout + structs + R"(
         uint deadTotal = scans[ rayCount - 1 ] + rays[rayCount - 1].dead;
 
         rayCount = rayCount - deadTotal;
+        groupX = (rayCount + 64 - 1u) / 64;
+        groupY = 1;
+        groupZ = 1;
     }
 )";
 

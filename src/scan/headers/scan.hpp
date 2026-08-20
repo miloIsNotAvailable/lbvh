@@ -36,6 +36,11 @@ layout(std430, binding = 2) buffer WgScans
     uint wgSum[];
 };
 
+layout(std430, binding = 3) buffer SizeCount
+{
+    uint sizeCount;
+};
+
 const uint THREADS = 64u;
 shared uint temp[ THREADS ];
 
@@ -45,7 +50,7 @@ void main()
     uint lid = gl_LocalInvocationID.x;
     uint wid = gl_WorkGroupID.x;
 
-    temp[lid] = gid < input.length() ? input[gid] : 0u;
+    temp[lid] = gid < sizeCount ? input[gid] : 0u;
     barrier();
 
     for( uint i = 1; i < THREADS; i *= 2 ) {
@@ -91,7 +96,7 @@ void main()
         barrier();
     }
 
-    if (gid < scan.length()) scan[gid] = temp[lid];
+    if (gid < sizeCount) scan[gid] = temp[lid];
 }
 )";
 
@@ -123,3 +128,58 @@ void main()
     child[gid] += parent[wid];
 }
 )";
+
+
+class BlellochScan {
+
+    private:
+    std::vector<Scan> levels;
+    size_t maxSize;
+    uint32_t wgSize;
+
+    Program scanSums, addSums;
+    Buffer sizeCount;
+
+    public:
+    BlellochScan( size_t size, uint32_t THREADS ) 
+    : maxSize(size),
+      wgSize(THREADS),
+      scanSums(scanScanSrc),
+      addSums(addScansSrc) {
+
+        Buffer sc( 
+            GL_SHADER_STORAGE_BUFFER,
+            sizeof(uint32_t),
+            &size,
+            GL_DYNAMIC_COPY
+        );
+        sizeCount = std::move( sc );
+
+        size_t n = size;
+
+        while (n > 1) {
+            // n = (n + THREADS - 1) / THREADS;
+
+            Buffer flagsSSBO(
+                GL_SHADER_STORAGE_BUFFER,
+                n * sizeof(uint32_t),
+                nullptr,
+                GL_DYNAMIC_COPY
+            );
+
+            n = (n + wgSize - 1) / wgSize;
+
+            Buffer wgSumSSBO(
+                GL_SHADER_STORAGE_BUFFER,
+                n * sizeof(uint32_t),
+                nullptr,
+                GL_DYNAMIC_COPY
+            );
+
+            levels.emplace_back( std::move(flagsSSBO), std::move(wgSumSSBO), n );
+        }
+
+    }
+
+    Buffer& operator ()( Buffer &input, uint32_t size, uint32_t wgSize );
+};

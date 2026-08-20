@@ -17,19 +17,12 @@ void dispatchProgram( GLuint u, GLuint v, GLuint w, GLuint computeProgram );
 GLuint compileShader( std::string &source );
 GLuint linkProgram( GLuint shader );
 
-class Program {
-
-    private:
-    GLuint program;
-    public:
-    Program( const std::string &source ); 
-
-    void operator()( GLuint groupsX, GLuint groupsY, GLuint threads  );
-    
-    GLuint get() {
-        return program;
-    }
+struct DispatchArgs {
+    uint32_t x;
+    uint32_t y;
+    uint32_t z;
 };
+
 
 void barrier( GLbitfield barrier );
 
@@ -42,6 +35,7 @@ class Buffer {
     public:
     Buffer( GLenum target, GLsizeiptr size, const void * data, GLenum usage );
     void toGPU( GLuint index );
+    GLuint id();
     template<typename T> std::vector<T> toCPU() {
         std::vector<T> v(size / sizeof(T));
   
@@ -78,6 +72,10 @@ class Buffer {
     }
 
     void update( const void* data, GLsizeiptr dataSize, GLintptr off = 0);
+    void updateTarget(GLenum newTarget)
+    {
+        target = newTarget;
+    }
 
     friend void swap(Buffer& a, Buffer& b) noexcept {
         using std::swap;
@@ -100,6 +98,8 @@ class Buffer {
             data = nullptr;
         }
     }
+
+    Buffer() {};
 
     Buffer(Buffer&& other) noexcept
         : buffer(other.buffer),
@@ -178,6 +178,51 @@ class Buffer {
         //     data = nullptr;
         // }
     }
+};
+
+class Program {
+
+    private:
+    GLuint program;
+    public:
+    Program( const std::string &source ); 
+    Program( ) = default;
+    
+    Program(const Program&) = delete;
+    Program& operator=(const Program&) = delete;
+
+    Program(Program&& other) noexcept
+        : program(other.program)
+    {
+        other.program = 0;
+    }
+
+    Program& operator=(Program&& other) noexcept
+    {
+        if (this != &other) {
+            if (program)
+                glDeleteProgram(program);
+
+            program = other.program;
+            other.program = 0;
+        }
+
+        return *this;
+    }
+
+    ~Program()
+    {
+        if (program)
+            glDeleteProgram(program);
+    }
+
+    void operator()( GLuint groupsX, GLuint groupsY, GLuint threads  );
+    
+    GLuint get() {
+        return program;
+    }
+
+    void indirect( Buffer &buffer );
 };
 
 inline const std::string structs = R"(    

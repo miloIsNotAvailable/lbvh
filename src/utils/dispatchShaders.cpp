@@ -51,6 +51,22 @@ void Buffer::update( const void* data, GLsizeiptr dataSize, GLintptr off ) {
     );
 }
 
+GLuint Buffer::id() {
+    return buffer;
+}
+
+void Program::indirect( Buffer &buffer ) {
+    glUseProgram(program);
+
+    glBindBuffer(
+        GL_DISPATCH_INDIRECT_BUFFER,
+        buffer.id()
+    );
+
+    glDispatchComputeIndirect(0);
+}
+
+
 // template<typename T> std::vector<T> Buffer::toCPU( ) {
 //     // data = ::operator new(size, std::align_val_t(16));
   
