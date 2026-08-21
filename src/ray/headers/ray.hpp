@@ -135,6 +135,11 @@ inline const std::string bounceHeader = raysLayout + structs + R"(
     {
         uint activeRays;
     };
+
+    layout(std430, binding = 7) buffer Triangles
+    {
+        Triangle triangles[];
+    };
 )";
 
 
@@ -260,7 +265,7 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
         // Transform the local direction to world space
         vec3 worldDir = localDir.x * tangentX + localDir.y * tangentY + localDir.z * normal;
         
-        return normalize(worldDir);
+        return (worldDir);
     }
 
     void main()
@@ -274,8 +279,8 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
         //     return;
         // }
 
-        uint matIdx = uint(rays[id].matId);
         uint triIdx = uint(rays[id].triId);
+        uint matIdx = uint(triangles[triIdx].matId);
         uint pixelId = uint( rays[id].pixelId );
 
         vec4 pos = rays[id].o + rays[id].t * rays[id].dir;
@@ -285,33 +290,33 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
         vec3 nor = normals[triIdx].xyz;
         vec3 lightPos = vec3( 0., 200., 0. );
         float r = 10.;
-        vec3 Le = vec3( 200.f );
+        vec3 Le = vec3( 300.f );
 
         if (dot(rays[id].dir.xyz, nor) > 0.0)
             nor = -nor;
 
         vec3 liray = shadowRays[id].dir.xyz;
         float cosTheta = max(dot(nor, liray), 0.);
-        if (cosTheta <= 0.) return;
+        // if (cosTheta <= 0.) return;
 
         vec3 normal = shadowRays[id].normal.xyz;
         float dist2 = (shadowRays[id].tmax ) * (shadowRays[id].tmax );
 
         float cosThetaL = max(dot(normal, -liray), 0.);
-        if( cosThetaL <= 0.0 ) return;
+        float pdf;
+        if( cosThetaL > 0.f && cosTheta > 0.f ) {        
+            float pdf_area = 1. / (4. * PI * r * r);
+            float pdf_omega = pdf_area * dist2 / cosThetaL;
+            vec3 Li = Le / pdf_omega;
 
-        float pdf_area = 1. / (4. * PI * r * r);
-        float pdf_omega = pdf_area * dist2 / cosThetaL;
-        vec3 Li = Le / pdf_omega;
+            pdf = cosTheta / PI; 
 
-        float pdf = cosTheta / PI; 
-
-        // pixels[id].L += materials[matIdx].diffuse;
-        float occ = 1.f - float(shadowRays[id].occluded);
-        
-        // if( cosThetaL > 0.f && cosTheta > 0.f ) 
-        pixels[pixelId].L  += vec4(occ * beta * color * Li * cosTheta, 0.f);
-        
+            // pixels[id].L += materials[matIdx].diffuse;
+            float occ = 1.f - float(shadowRays[id].occluded);
+            
+            // if( cosThetaL > 0.f && cosTheta > 0.f ) 
+            pixels[pixelId].L  += vec4(occ * beta * color * Li * cosTheta, 0.f);   
+        }
 
         float bx = rand( pixels[pixelId].state );
         float by = rand( pixels[pixelId].state );
@@ -319,7 +324,7 @@ inline const std::string computeBounceSrc = bounceHeader + R"(
         vec3 bounceDir = RandomUnitVectorInHemisphereOf( nor, vec2(bx, by) );
         
         cosTheta = max(dot(nor, bounceDir), 0.);
-        if (cosTheta <= 0.) return;
+        // if (cosTheta <= 0.) return;
 
         pdf = cosTheta / PI; 
 
@@ -409,10 +414,10 @@ inline const std::string generatePrimaryRaySrc = generatePrimaryRayHeader + R"(
         rays[id].o   = vec4(rndAperturePointWrld, 0.0);
         rays[id].dir = vec4(rayDir, 0.0);
 
-        rays[id].tmin = 0.0;
-        rays[id].tmax = 1e30f;
-        rays[id].t = -1.0;
-        rays[id].triId = -1;
+        // rays[id].tmin = 0.0;
+        // rays[id].tmax = 1e30f;
+        // rays[id].t = -1.0;
+        // rays[id].triId = -1;
         rays[id].dead = 0;
         rays[id].pixelId = id;
     }

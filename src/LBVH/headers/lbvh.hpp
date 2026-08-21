@@ -361,7 +361,7 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         
         V[size++]=0;
 
-        float closestT = ray.tmax;
+        float closestT = 1e30f;
         vec3 hitPoint;
         int matId;
         int triId;
@@ -370,11 +370,11 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
             uint idx = V[--size];
             Node node = nodes[ idx ];
 
-            AABBHit nodeHit = intersectAABB( ray.o.xyz, ray.dir.xyz, node.aabb.bmin.xyz, node.aabb.bmax.xyz );
+            // AABBHit nodeHit = intersectAABB( ray.o.xyz, ray.dir.xyz, node.aabb.bmin.xyz, node.aabb.bmax.xyz );
 
-            if( !nodeHit.hit || nodeHit.tFar < ray.tmin || nodeHit.tClose > closestT ) {
-                continue;
-            }
+            // if( !nodeHit.hit || nodeHit.tFar < ray.tmin || nodeHit.tClose > closestT ) {
+            //     continue;
+            // }
 
             if( idx >= N - 1 ) {
 
@@ -407,17 +407,27 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
                 AABBHit leftHit = intersectAABB( ray.o.xyz, ray.dir.xyz, left.aabb.bmin.xyz, left.aabb.bmax.xyz );
                 AABBHit rightHit = intersectAABB( ray.o.xyz, ray.dir.xyz, right.aabb.bmin.xyz, right.aabb.bmax.xyz );
 
-                if( leftHit.hit && rightHit.hit ) {
+                bool hitLeft =
+                    leftHit.hit &&
+                    leftHit.tFar >= ray.tmin &&
+                    leftHit.tClose <= closestT;
+
+                bool hitRight =
+                    rightHit.hit &&
+                    rightHit.tFar >= ray.tmin &&
+                    rightHit.tClose <= closestT;
+
+                if( hitLeft && hitRight ) {
                     uint frstNode = leftHit.tClose > rightHit.tClose ? node.right : node.left;
                     uint scndNode = leftHit.tClose > rightHit.tClose ? node.left : node.right;
                 
                     V[size++] = scndNode;
                     V[size++] = frstNode;
-                } else if( leftHit.hit ) {
+                } else if( hitLeft ) {
                     V[size++]=node.left;
-                    } else if( rightHit.hit ) {
+                    } else if( hitRight ) {
                         V[size++]=node.right; 
-                }
+                    }
             }
         }
 
@@ -428,7 +438,7 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
             // hits[id].t = -1.;
             // hits[id].color = vec4(0.);
             rays[id].t = -1;
-            rays[id].matId = -1;
+            // rays[id].matId = -1;
             rays[id].triId = -1;
             rays[id].dead = 1;
             scan[id]=1;
@@ -439,7 +449,7 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
             // hits[id].color = materials[ matId ].diffuse;
 
             rays[id].t = closestT;
-            rays[id].matId = matId;
+            // rays[id].matId = matId;
             rays[id].triId = triId;
             rays[id].dead = 0;
             scan[id]=0;
@@ -569,11 +579,11 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
             uint idx = V[--size];
             Node node = nodes[ idx ];
 
-            AABBHit nodeHit = intersectAABB( ray.o.xyz, ray.dir.xyz, node.aabb.bmin.xyz, node.aabb.bmax.xyz );
+            // AABBHit nodeHit = intersectAABB( ray.o.xyz, ray.dir.xyz, node.aabb.bmin.xyz, node.aabb.bmax.xyz );
 
-            if( !nodeHit.hit || nodeHit.tFar < ray.tmin || nodeHit.tClose > ray.tmax ) {
-                continue;
-            }
+            // if( !nodeHit.hit || nodeHit.tFar < ray.tmin || nodeHit.tClose > ray.tmax ) {
+            //     continue;
+            // }
 
             if( idx >= N - 1 ) {
 
@@ -602,17 +612,27 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
                 AABBHit leftHit = intersectAABB( ray.o.xyz, ray.dir.xyz, left.aabb.bmin.xyz, left.aabb.bmax.xyz );
                 AABBHit rightHit = intersectAABB( ray.o.xyz, ray.dir.xyz, right.aabb.bmin.xyz, right.aabb.bmax.xyz );
 
-                if( leftHit.hit && rightHit.hit ) {
+                bool hitLeft =
+                    leftHit.hit &&
+                    leftHit.tFar >= ray.tmin &&
+                    leftHit.tClose <= ray.tmax;
+
+                bool hitRight =
+                    rightHit.hit &&
+                    rightHit.tFar >= ray.tmin &&
+                    rightHit.tClose <= ray.tmax;
+
+                if( hitLeft && hitRight ) {
                     uint frstNode = leftHit.tClose > rightHit.tClose ? node.right : node.left;
                     uint scndNode = leftHit.tClose > rightHit.tClose ? node.left : node.right;
                 
                     V[size++] = scndNode;
                     V[size++] = frstNode;
-                } else if( leftHit.hit ) {
+                } else if( hitLeft ) {
                     V[size++]=node.left;
-                    } else if( rightHit.hit ) {
+                    } else if( hitRight ) {
                         V[size++]=node.right; 
-                }
+                    }
             }
         }
     }

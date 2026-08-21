@@ -45,7 +45,7 @@
 
 // std::vector<uint32_t> data = {2, 1, 4, 6, 3, 7};
 
-const GLuint WIDTH = 600, HEIGHT = 600;
+const GLuint WIDTH = 1600, HEIGHT = 1600;
 
 glm::vec3 e(0., 0., -700.f);
 glm::vec3 c(0., 0., 0.f);
@@ -327,7 +327,7 @@ int main()
     );
 
 
-    GLuint numElements = static_cast<GLuint>(rays.size());
+    GLuint numElements = static_cast<GLuint>(obj.triangles.size());
     GLuint localSize   = 64;
 
     GLuint groups = (numElements + localSize - 1) / localSize;
@@ -580,9 +580,10 @@ int main()
         GL_DYNAMIC_COPY
     );
     
+    groups = (rSize + THREADS - 1) / THREADS;
     DispatchArgs argsInit { groups, 1, 1 };
     Buffer indirectDispatchBuffer(
-        GL_DISPATCH_INDIRECT_BUFFER,
+        GL_SHADER_STORAGE_BUFFER,
         sizeof( DispatchArgs ),
         &argsInit,
         GL_DYNAMIC_COPY
@@ -593,7 +594,7 @@ int main()
     Program compactRaysScatter( compactRaysScatterSrc );
     Program updateRayCount( updateRayCountSrc );
 
-    BlellochScan compactScan( rSize, THREADS );
+    BlellochScan compactScan( raysSizePadded, THREADS );
 
     GLuint query;
     glGenQueries(1, &query);
@@ -626,11 +627,11 @@ int main()
             rayCountSSBO.toGPU( 5 );
             triangleSizeUBO.toGPU( 0 );
             
-            traverse( groups, 1, 1 );
-            // traverse.indirect( indirectDispatchBuffer );
+            // traverse( groups, 1, 1 );
+            traverse.indirect( indirectDispatchBuffer );
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
             
-            if( bounces > 3 ) {
+            if( bounces > 2 ) {
                 uint32_t activeCount = rayCountSSBO.toCPU<uint32_t>()[0];
 
                 // Buffer scanned = blellochScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
@@ -644,7 +645,7 @@ int main()
                 compactRaysScatter( groups, 1, 1 );
                 barrier(GL_SHADER_STORAGE_BARRIER_BIT);
                 
-                indirectDispatchBuffer.updateTarget( GL_SHADER_STORAGE_BUFFER );
+                // indirectDispatchBuffer.updateTarget( GL_SHADER_STORAGE_BUFFER );
 
                 traverseSSBO.toGPU( 0 );
                 scanned.toGPU( 1 );
@@ -654,7 +655,7 @@ int main()
                 updateRayCount( 1, 1, 1 );
                 barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
                 
-                indirectDispatchBuffer.updateTarget( GL_DISPATCH_INDIRECT_BUFFER );
+                // indirectDispatchBuffer.updateTarget( GL_DISPATCH_INDIRECT_BUFFER );
 
                 std::swap( traverseSSBO, rayCompactedSSBO );
             }
@@ -666,8 +667,8 @@ int main()
             normalsSSBO.toGPU( 4 );
             rayCountSSBO.toGPU( 5 );
         
-            generateShadowRays( groups, 1, 1 );
-            // generateShadowRays.indirect( indirectDispatchBuffer );
+            // generateShadowRays( groups, 1, 1 );
+            generateShadowRays.indirect( indirectDispatchBuffer );
 
             barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
         
@@ -677,8 +678,8 @@ int main()
             shadowRaySSBO.toGPU( 3 );
             rayCountSSBO.toGPU( 4 );
         
-            traceShadowRays( groups, 1, 1 );
-            // traceShadowRays.indirect( indirectDispatchBuffer );
+            // traceShadowRays( groups, 1, 1 );
+            traceShadowRays.indirect( indirectDispatchBuffer );
         
             barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
         
@@ -697,9 +698,10 @@ int main()
             normalsSSBO.toGPU( 4 );
             rayActiveSSBO.toGPU( 5 );
             rayCountSSBO.toGPU( 6 );
+            trianglesSSBO.toGPU( 7 );
 
-            bounce( groups, 1, 1 );
-            // bounce.indirect( indirectDispatchBuffer );
+            // bounce( groups, 1, 1 );
+            bounce.indirect( indirectDispatchBuffer );
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
         }
         
@@ -722,7 +724,7 @@ int main()
 
     double elapsedMs = elapsedNs / 1'000'000.0;
 
-    // with compaction 2.377s
+    // without compaction GPU time: 26.359 s
     printf("GPU time: %.3f s\n", elapsedMs * .001);
 
     glDeleteQueries(1, &query);

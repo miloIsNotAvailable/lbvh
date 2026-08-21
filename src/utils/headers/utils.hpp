@@ -17,6 +17,35 @@ void dispatchProgram( GLuint u, GLuint v, GLuint w, GLuint computeProgram );
 GLuint compileShader( std::string &source );
 GLuint linkProgram( GLuint shader );
 
+    template<typename F>
+    double measureGPU(const char* name, F&& func)
+    {
+        GLuint query;
+        glGenQueries(1, &query);
+
+        glBeginQuery(GL_TIME_ELAPSED, query);
+
+        func();
+
+        glEndQuery(GL_TIME_ELAPSED);
+
+        GLuint64 elapsedNs = 0;
+        glGetQueryObjectui64v(
+            query,
+            GL_QUERY_RESULT,
+            &elapsedNs
+        );
+
+        glDeleteQueries(1, &query);
+
+        double ms = double(elapsedNs) / 1'000'000.0;
+
+        printf("%s: %.3f ms\n", name, ms);
+
+        return ms;
+    }
+
+
 struct DispatchArgs {
     uint32_t x;
     uint32_t y;
