@@ -6,16 +6,18 @@ Buffer& BlellochScan::operator()(  Buffer &input, uint32_t size, uint32_t wgSize
 
     Buffer *curr = &input; 
 
-    size_t n = size;
-    int levelsNeeded = 0;
+    // size_t n = size;
+    // int levelsNeeded = 0;
 
-    while (n > 1) {
-        n = (n + wgSize - 1) / wgSize;
-        levelsNeeded ++;
-    }
+    // while (n > 1) {
+    //     n = (n + wgSize - 1) / wgSize;
+    //     levelsNeeded ++;
+    // }
 
-    std::vector<uint32_t> sizes(levelsNeeded);
-    for( int i = 0; i < levelsNeeded; i ++ ) {
+
+    // std::vector<uint32_t> sizes(levelsNeeded);
+    for( int i = 0; i < levels.size(); i ++ ) {
+
 
         // Buffer *flagsSSBO = &levels[i].scan;
         // Buffer *wgSumSSBO = &levels[i].sum;
@@ -27,10 +29,25 @@ Buffer& BlellochScan::operator()(  Buffer &input, uint32_t size, uint32_t wgSize
         //     GL_DYNAMIC_COPY
         // );
         
-        sizeCount.update( &wgSumSize, sizeof(uint32_t) );
+        // sizeCount.update( &wgSumSize, sizeof(uint32_t) );
 
-        sizes[i] = wgSumSize;
-        wgSumSize = (wgSumSize + wgSize - 1) / wgSize;
+        // sizes[i] = wgSumSize;
+        // wgSumSize = (wgSumSize + wgSize - 1) / wgSize;
+
+        if (i == 0)
+            sizeCount.toGPU(0);
+        else
+            levels[i - 1].dispatch.toGPU(0);
+
+        // sizeCount.toGPU(0);
+        levels[i].dispatch.toGPU(1);
+        updateDispatch(1, 1, 1);
+        barrier( GL_SHADER_STORAGE_BARRIER_BIT );
+
+        // std::vector<uint32_t> a = sizeCount.toCPU<uint32_t>();
+        // std::vector<WgDispatch> b = levels[i].dispatch.toCPU<WgDispatch>();
+
+        // printf( "count: %d, disp: %d, %d, %d, %d\n", a[0], b[0].groupX, b[0].groupY, b[0].groupZ, b[0].count );
 
         // Buffer wgSumSSBO(
         //     GL_SHADER_STORAGE_BUFFER,
@@ -42,10 +59,11 @@ Buffer& BlellochScan::operator()(  Buffer &input, uint32_t size, uint32_t wgSize
         curr->toGPU(0);
         levels[i].scan.toGPU(1);
         levels[i].sum.toGPU(2);
-        sizeCount.toGPU(3);
+        levels[i].dispatch.toGPU(3);
 
-        scanSums( wgSumSize, 1, 1 );
-        barrier( GL_SHADER_STORAGE_BARRIER_BIT );
+        // scanSums( wgSumSize, 1, 1 );
+        scanSums.indirect( levels[i].dispatch );
+        barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
 
         // scanData = wgSumSSBO.toCPU<uint32_t>();
 
@@ -53,9 +71,14 @@ Buffer& BlellochScan::operator()(  Buffer &input, uint32_t size, uint32_t wgSize
         // levels.push_back( std::move( scan_ ) );       
 
         curr = &levels[i].sum;
+
+        // sizeCount.toGPU(0);
+        // levels[i].dispatch.toGPU(1);
+        // updateCounter(1, 1, 1);
+        // barrier( GL_SHADER_STORAGE_BARRIER_BIT );
     }
 
-    for( int i = levelsNeeded - 1; i > 0; i-- ) {
+    for( int i = levels.size() - 1; i > 0; i-- ) {
         // Scan &l = levels[i];
         // std::vector<uint32_t> t = l.sum.toCPU<uint32_t>();
         
@@ -70,8 +93,10 @@ Buffer& BlellochScan::operator()(  Buffer &input, uint32_t size, uint32_t wgSize
         
         // printf( "%d, %d\n", sizes[i], child.sumSize );
         // GLuint groups = (child.sumSize + wgSize - 1) / wgSize;
-        addSums( sizes[i], 1, 1 );
-        barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        // addSums( sizes[i], 1, 1 );
+        addSums.indirect( child.dispatch );
+        barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
 
         // printf( "%d\n", i );
         // for( int i = 0; i < p.size(); i++ ) {

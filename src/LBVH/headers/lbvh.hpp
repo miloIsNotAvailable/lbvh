@@ -80,15 +80,32 @@ inline const std::string lbvhSrc = layout + structs + R"(
         return x == 0u ? 32 : 31 - findMSB(x);
     }
 
+    int delta(uint i, int j)
+    {
+        if (j < 0 || j >= int(N))
+            return -1;
+
+        uint a = morton[i];
+        uint b = morton[uint(j)];
+
+        if (a == b)
+        {
+            return 32 + clz(i ^ uint(j));
+        }
+
+        return clz(a ^ b);
+    }
+
     int findSplit( int first, int last)
     {
         uint firstCode = morton[first];
         uint lastCode = morton[last];
 
-        if (firstCode == lastCode)
-            return (first + last) >> 1;
+        // if (firstCode == lastCode)
+        //     return (first + last) >> 1;
 
-        int commonPrefix = clz(firstCode ^ lastCode);
+        // int commonPrefix = clz(firstCode ^ lastCode);
+        int commonPrefix = delta( first, last );
         
         int split = first;
         int step = last - first;
@@ -100,8 +117,8 @@ inline const std::string lbvhSrc = layout + structs + R"(
 
             if (newSplit < last)
             {
-                uint splitCode = morton[newSplit];
-                int splitPrefix = clz(firstCode ^ splitCode);
+                // uint splitCode = morton[newSplit];
+                int splitPrefix = delta(first, newSplit);
                 if (splitPrefix > commonPrefix)
                     split = newSplit; // accept proposal
             }
@@ -111,13 +128,6 @@ inline const std::string lbvhSrc = layout + structs + R"(
         return split;
     }
     
-    int delta(uint i, int j)
-    {
-        if (j < 0 || j >= int(N))
-            return -1;
-
-        return clz(morton[i] ^ morton[uint(j)]);
-    }
 
     void main()
     {
@@ -341,6 +351,46 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         );
     }
 
+    bool intersectSphere(
+        vec3 o,
+        vec3 d,
+        vec3 center,
+        float radius,
+        float tmin,
+        float tmax,
+        out float tHit,
+        out vec3 hitPoint,
+        out vec3 normal
+    ) {
+        vec3 oc = o - center;
+
+        // assumes d is normalized
+        float b = dot(oc, d);
+        float c = dot(oc, oc) - radius * radius;
+
+        float disc = b * b - c;
+
+        if (disc < 0.0)
+            return false;
+
+        float s = sqrt(disc);
+
+        float t = -b - s;
+
+        if (t < tmin || t > tmax) {
+            t = -b + s;
+
+            if (t < tmin || t > tmax)
+                return false;
+        }
+
+        tHit = t;
+        hitPoint = o + d * t;
+        normal = (hitPoint - center) / radius;
+
+        return true;
+    }
+
     void main()
     {
         uint id = gl_GlobalInvocationID.x;
@@ -366,7 +416,38 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         int matId;
         int triId;
 
+        float lightT;
+        vec3 lightHit;
+        vec3 lightNormal;
+
+
+        uint visits = 0u;
         while( size > 0 ) {
+
+            ++visits;
+            if( visits > 1000 ) {
+                return;
+            }
+            
+            // bool hitLight = intersectSphere(
+            //     ray.o.xyz,
+            //     ray.dir.xyz,
+            //     vec3(0., 200., 0),
+            //     20.f,
+            //     ray.tmin,
+            //     closestT,
+            //     lightT,
+            //     lightHit,
+            //     lightNormal
+            // );
+
+            // if (hitLight) {
+            //     closestT = lightT;
+            //     matId=0;
+            //     triId=50000000;
+            // }
+            
+
             uint idx = V[--size];
             Node node = nodes[ idx ];
 
@@ -424,8 +505,10 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
                     V[size++] = scndNode;
                     V[size++] = frstNode;
                 } else if( hitLeft ) {
+                 
                     V[size++]=node.left;
                     } else if( hitRight ) {
+                     
                         V[size++]=node.right; 
                     }
             }

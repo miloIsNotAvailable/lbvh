@@ -281,6 +281,12 @@ inline const std::string structs = R"(
         int visited;
     };
 
+    struct Atrous {
+        vec4 pos;
+        vec4 nor;
+        uint valid;
+    };
+
     struct Ray {
         vec4 o;
         vec4 dir;

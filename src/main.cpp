@@ -16,6 +16,7 @@
 #include "stb_image_write.h"
 #include <scan.hpp>
 #include <numeric>
+#include <denoise.hpp>
 
 // std::vector<Triangle> triangles = {
 //     Triangle(
@@ -47,8 +48,13 @@
 
 const GLuint WIDTH = 1600, HEIGHT = 1600;
 
-glm::vec3 e(0., 0., -700.f);
-glm::vec3 c(0., 0., 0.f);
+
+// cornell box
+// glm::vec3 e(0., 0., -700.f);
+// glm::vec3 c(0.f, 0.f, 0.f);
+
+glm::vec3 e(-50., 60., 250.f);
+glm::vec3 c(-50., 0., 0.f);
 
 float angle = 60.f / 180.f * PI;
 float FOV = .5f / tan( angle / 2.f );
@@ -259,9 +265,9 @@ int main()
     // for( auto &d : bigFlags ) {
     //     d = dist( rng ) ? 1u : 0u;
     // }
-
-    // flags.resize( 64, 0 );
     // bigFlags.resize( (( bigFlags.size() + 63 ) / 64) * 64, 0 );
+
+    // // flags.resize( 64, 0 );
 
     // uint32_t wgSize = 64;
    
@@ -272,13 +278,16 @@ int main()
     //     GL_DYNAMIC_COPY  
     // );
     // BlellochScan scanner( bigFlags.size(), wgSize );
+    // Buffer &sizeCounter = scanner.counter();
     // // Buffer out = blellochScan( e, flags.size(), wgSize );
     // GLuint query;
+    // uint32_t eee = bigFlags.size();
     // glGenQueries(1, &query);
 
     // glBeginQuery(GL_TIME_ELAPSED, query);
 
-    // Buffer out = scanner(e, bigFlags.size(), wgSize);
+    // sizeCounter.update( &eee, sizeof(uint32_t) );
+    // Buffer out = scanner(e, 16, wgSize);
 
     // glEndQuery(GL_TIME_ELAPSED);
 
@@ -294,11 +303,14 @@ int main()
 
     // glDeleteQueries(1, &query);
 
-    // std::vector<uint32_t> c = out.toCPU<uint32_t>();
-    // for( int i = 0; i < c.size(); i++ ) {
-    //     printf( "%d,", c[i] );
-    // }
+    // // std::vector<uint32_t> c = out.toCPU<uint32_t>();
+    // // for( int i = 0; i < c.size(); i++ ) {
+    // //     printf( "%d,", c[i] );
+    // // }
     
+    // std::vector<uint32_t> sc = sizeCounter.toCPU<uint32_t>();
+    // printf( "count: %d\n", sc[0] );
+
     std::cout << "\n\n";
     
     int THREADS = 64;
@@ -394,6 +406,7 @@ int main()
     Program scatter( radixScatterSrc );
 
     BlellochScan radixScan( triIds.size(), THREADS );
+    // radixScan.counter().update( &N, sizeof( int ) );
 
     for (int i = 0; i < 30; ++i) {
 
@@ -435,6 +448,11 @@ int main()
         // trianglesSSBO.toGPU(1);
         // trianglesSortedSSBO.toGPU(6);
     }
+
+    // std::vector<uint32_t> mortons = mortonSSBO.toCPU<uint32_t>();
+    // for( int i =0; i < 100; i ++ ) {
+    //     printf( "%d\n", mortons[i] );
+    // }
 
     // std::vector<uint32_t> triOut = triIdsA.toCPU<uint32_t>();
     // for( auto& i: triOut ) {
@@ -542,7 +560,14 @@ int main()
     // }
 
     mortonSSBO.destroy();
+    
+    std::vector<Node> bvh = bvhSSBO.toCPU<Node>();
+    
+    // printf( "LBVH built, length: %d\n", bvh.size() );
 
+    for( int i = 0; i < 32; i ++ ) {
+        printf( "parent: %d, left: %d, right: %d\n", bvh[i].parent, bvh[i].left, bvh[i].right );        
+    }
     // GLuint traverseProgram = createTraversalShader();
     // dispatchProgram(groups, 1, 1, traverseProgram);
     
@@ -572,13 +597,52 @@ int main()
         GL_DYNAMIC_COPY
     );
 
-    uint32_t rSize = rays.size();
-    Buffer rayCountSSBO(
+
+    std::vector<glm::ivec2> off;
+    off.reserve( 25 );
+
+    for( int i = -2; i <= 2; i ++ ) {
+        for( int j = -2; j <= 2; j ++ ) {
+            off.push_back( glm::ivec2( i, j ) );
+        }
+    }
+
+    Buffer atrousSSBO(
         GL_SHADER_STORAGE_BUFFER,
-        sizeof( uint32_t ),
-        &rSize,
+        rays.size() * sizeof( Atrous ),
+        nullptr,
         GL_DYNAMIC_COPY
     );
+    
+    Buffer offsetsSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        off.size() * sizeof( glm::ivec2 ),
+        off.data(),
+        GL_DYNAMIC_COPY
+    );
+
+    std::vector<float> kernel = {
+        1.f/256.f,  4.f/256.f,  6.f/256.f,  4.f/256.f, 1.f/256.f,
+        4.f/256.f, 16.f/256.f, 24.f/256.f, 16.f/256.f, 4.f/256.f,
+        6.f/256.f, 24.f/256.f, 36.f/256.f, 24.f/256.f, 6.f/256.f,
+        4.f/256.f, 16.f/256.f, 24.f/256.f, 16.f/256.f, 4.f/256.f,
+        1.f/256.f,  4.f/256.f,  6.f/256.f,  4.f/256.f, 1.f/256.f
+    };
+
+    Buffer kernelSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        kernel.size() * sizeof( float ),
+        kernel.data(),
+        GL_DYNAMIC_COPY
+    );
+
+    uint32_t rSize = rays.size();
+    // Buffer rayCountSSBO(
+    //     GL_SHADER_STORAGE_BUFFER,
+    //     sizeof( uint32_t ),
+    //     &rSize,
+    //     GL_DYNAMIC_COPY
+    // );
     
     groups = (rSize + THREADS - 1) / THREADS;
     DispatchArgs argsInit { groups, 1, 1 };
@@ -593,17 +657,21 @@ int main()
     Program traceShadowRays( traverseShadowRaySrc );
     Program compactRaysScatter( compactRaysScatterSrc );
     Program updateRayCount( updateRayCountSrc );
+    Program saveDenoiseInfo( saveDenoiseInfoSrc );
 
     BlellochScan compactScan( raysSizePadded, THREADS );
+    Buffer &rayCountSSBO = compactScan.counter();
 
     GLuint query;
     glGenQueries(1, &query);
 
     glBeginQuery(GL_TIME_ELAPSED, query);
 
-    const int MAX_ITER = 64;
+    const int MAX_ITER = 32;
     for( int i = 0; i < MAX_ITER; i ++ ) {
 
+        // printf( "starting iteration: %d\n", i );
+        
         traverseSSBO.toGPU( 0 );
         pixelSSBO.toGPU( 1 );
         cameraUBO.toGPU( 1 );
@@ -617,6 +685,8 @@ int main()
         indirectDispatchBuffer.update( &argsInit, sizeof( DispatchArgs ) );
         barrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
+        // glFinish();
+
         for( int bounces = 0; bounces < 7; bounces ++ ) {
     
             trianglesSSBO.toGPU( 0 );
@@ -626,17 +696,70 @@ int main()
             rayActiveSSBO.toGPU( 4 );
             rayCountSSBO.toGPU( 5 );
             triangleSizeUBO.toGPU( 0 );
-            
+
+
+            // auto rr = traverseSSBO.toCPU<Ray>();
+
+            // for (int k = 0; k < 8; ++k) {
+            //     printf(
+            //         "before: %d: o=(%f,%f,%f) dir=(%f,%f,%f) t=%f tri=%d dead=%u pixel=%u\n",
+            //         k,
+            //         rr[k].o.x, rr[k].o.y, rr[k].o.z,
+            //         rr[k].dir.x, rr[k].dir.y, rr[k].dir.z,
+            //         rr[k].t,
+            //         rr[k].triId,
+            //         rr[k].dead,
+            //         rr[k].pixelId
+            //     );
+            // }
+
+
+            // printf( "traverse\n" );
             // traverse( groups, 1, 1 );
             traverse.indirect( indirectDispatchBuffer );
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
             
-            if( bounces > 2 ) {
-                uint32_t activeCount = rayCountSSBO.toCPU<uint32_t>()[0];
+            if( i == 0 && bounces == 0 ) {
+                traverseSSBO.toGPU( 0 );
+                atrousSSBO.toGPU( 1 );
+                normalsSSBO.toGPU( 2 );
+                sceneUBO.toGPU(0);
 
-                // Buffer scanned = blellochScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
-                Buffer &scanned = compactScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
+                saveDenoiseInfo( groups, 1, 1 );
+                barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            } 
+
+            // rr = traverseSSBO.toCPU<Ray>();
+
+            // for (int k = 0; k < 8; ++k) {
+            //     printf(
+            //         "after: %d: o=(%f,%f,%f) dir=(%f,%f,%f) t=%f tri=%d dead=%u pixel=%u\n",
+            //         k,
+            //         rr[k].o.x, rr[k].o.y, rr[k].o.z,
+            //         rr[k].dir.x, rr[k].dir.y, rr[k].dir.z,
+            //         rr[k].t,
+            //         rr[k].triId,
+            //         rr[k].dead,
+            //         rr[k].pixelId
+            //     );
+            // }
+
+            // glFinish();
+            // uint32_t activeCount = rayCountSSBO.toCPU<uint32_t>()[0];
+            // printf( "active ray count BEFORE: %d\n", activeCount );
+
+            // DispatchArgs indirect = indirectDispatchBuffer.toCPU<DispatchArgs>()[0];
+            // printf( "merry fucking dispatch: %d, %d, %d\n", indirect.x, indirect.y, indirect.z );
+
+            // printf( "compact\n" );
+            if( bounces > 2 ) {
                 
+                // Buffer scanned = blellochScan( rayActiveSSBO, ((activeCount + THREADS - 1) / THREADS) * THREADS, THREADS );
+                Buffer &scanned = compactScan( rayActiveSSBO, 0, THREADS );
+                // uint32_t activeCount = rayCountSSBO.toCPU<uint32_t>()[0];
+                
+                // printf( "active ray count AFTER: %d\n", activeCount );
+
                 traverseSSBO.toGPU( 0 );
                 scanned.toGPU( 1 );
                 rayCompactedSSBO.toGPU( 2 );
@@ -651,7 +774,7 @@ int main()
                 scanned.toGPU( 1 );
                 rayCountSSBO.toGPU( 2 );
                 indirectDispatchBuffer.toGPU( 3 );
-                
+
                 updateRayCount( 1, 1, 1 );
                 barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
                 
@@ -660,6 +783,7 @@ int main()
                 std::swap( traverseSSBO, rayCompactedSSBO );
             }
         
+            // printf( "shadows\n" );
             trianglesSSBO.toGPU( 0 );
             traverseSSBO.toGPU( 1 );
             pixelSSBO.toGPU( 2 );
@@ -671,7 +795,9 @@ int main()
             generateShadowRays.indirect( indirectDispatchBuffer );
 
             barrier( GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT );
-        
+
+            // printf( "trace shadows\n" );
+
             trianglesSSBO.toGPU( 0 );
             triIdsA.toGPU( 1 );
             bvhSSBO.toGPU( 2 );
@@ -690,7 +816,9 @@ int main()
             //     glm::vec4 dir = shadows[i].dir;
             //     printf( "%f, %f, %f, %d\n", dir.x, dir.y, dir.z, shadows[i].occluded );
             // }
-        
+
+            // printf( "bounce\n" );
+
             traverseSSBO.toGPU( 0 );
             matSSBO.toGPU( 1 );
             pixelSSBO.toGPU( 2 );
@@ -705,6 +833,7 @@ int main()
             barrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
         }
         
+        // printf( "average\n" );
         pixelSSBO.toGPU( 0 );
         evalBounce( groups, 1, 1 );
         barrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -729,40 +858,101 @@ int main()
 
     glDeleteQueries(1, &query);
 
-    // hitSSBO.toCPU();
-    std::vector<Ray> res = traverseSSBO.toCPU<Ray>();
-    // Hit* res = hitSSBO.get<Hit>();
-    // Ray* res = traverseSSBO.get<Ray>();
+    Program denoise( denoiseSrc );
+
+   Buffer pixelBSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        rays.size() * sizeof(Pixel),
+        nullptr,
+        GL_DYNAMIC_COPY
+    );
+
+    Buffer stepUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof(int),
+        nullptr,
+        GL_DYNAMIC_COPY
+    );
+
+    for( int i = 0; i < 4; i ++ ) {
+
+        int step = 1 << i;
+
+        stepUBO.update( &step, sizeof( int ) );
+
+        pixelSSBO.toGPU( 0 );
+        atrousSSBO.toGPU( 1 );
+        offsetsSSBO.toGPU( 2 );
+        kernelSSBO.toGPU( 3 );
+        pixelBSSBO.toGPU( 4 );
+        
+        stepUBO.toGPU( 0 );
+        cameraUBO.toGPU( 1 );
+
+        denoise( groups, 1, 1 );
+        barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        std::swap( pixelSSBO, pixelBSSBO );
+    }
+
+    std::vector<Pixel> pixelsB = pixelSSBO.toCPU<Pixel>();
+    for( int i = 0; i < 20; i ++ ) {
+        Pixel p = pixelsB[ i ];
+        printf( "%f, %f, %f\n", p.col.x, p.col.y, p.col.z );
+    }   
+
+    // // hitSSBO.toCPU();
+    // std::vector<Ray> res = traverseSSBO.toCPU<Ray>();
+    // // Hit* res = hitSSBO.get<Hit>();
+    // // Ray* res = traverseSSBO.get<Ray>();
 
     std::vector<Pixel> pixelRes = pixelSSBO.toCPU<Pixel>();
+    
+    // for (int i = 0; i < pixelRes.size(); ++i) {
+    //     glm::vec4 c = pixelRes[i].col;
+
+    //     float lum =
+    //         0.2126f * c.r +
+    //         0.7152f * c.g +
+    //         0.0722f * c.b;
+
+    //     if (lum > 100.0f) {
+    //         printf(
+    //             "%d: rgb=(%f,%f,%f), lum=%f\n",
+    //             i, c.r, c.g, c.b, lum
+    //         );
+    //     }
+    // }
+    
+    // std::vector<Atrous> pixelRes = atrousSSBO.toCPU<Atrous>();
     // Pixel* pixelRes = pixelSSBO.get<Pixel>();
 
-    for (size_t i = 0; i < 10; ++i) {
+    // for (size_t i = 0; i < 10; ++i) {
         
-        Ray r = res[i];
-        Pixel p = pixelRes[i];
+    //     Ray r = res[i];
+    //     Pixel p = pixelRes[i];
 
-        glm::vec4 color, hit;
-        color = p.col / float(MAX_ITER);
-        if( r.matId >= 0 ) {
-            Material mat = obj.materials[ r.matId ];
-            hit = r.o + r.t * r.dir;
-        } else {
-            // color = glm::vec4(0.f);
-            hit = glm::vec4(0.f);
-        }
+    //     glm::vec4 color, hit;
+    //     color = p.col / float(MAX_ITER);
+    //     if( r.matId >= 0 ) {
+    //         Material mat = obj.materials[ r.matId ];
+    //         hit = r.o + r.t * r.dir;
+    //     } else {
+    //         // color = glm::vec4(0.f);
+    //         hit = glm::vec4(0.f);
+    //     }
         
-        printf(
-            "hit: %f, %f, %f\t" 
-            "color: %f, %f, %f\n",
-            hit.x,
-            hit.y,
-            hit.z,
-            color.x,
-            color.y,
-            color.z
-        );
-    }
+    //     printf(
+    //         "hit: %f, %f, %f\t" 
+    //         "color: %f, %f, %f\n",
+    //         hit.x,
+    //         hit.y,
+    //         hit.z,
+    //         color.x,
+    //         color.y,
+    //         color.z
+    //     );
+    // }
 
     std::vector<unsigned char> img(WIDTH * HEIGHT * 3);
 
@@ -774,7 +964,9 @@ int main()
 
             // Ray r = res[src];
             Pixel p = pixelRes[ src ];
-            glm::vec4 color = p.col / float(MAX_ITER);
+            glm::vec4 color = p.col;
+            
+            // glm::vec4 color = p.col / float(MAX_ITER);
 
             // glm::vec4 color;
             // if( r.matId >= 0 ) {
@@ -797,7 +989,7 @@ int main()
     }
 
     stbi_write_jpg(
-        "output3.jpg",
+        "output5.jpg",
         WIDTH,
         HEIGHT,
         3,

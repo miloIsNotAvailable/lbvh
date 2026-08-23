@@ -3,16 +3,6 @@
 #include <string>
 #include <utils.hpp>
 
-struct Scan {
-    Buffer scan;
-    Buffer sum;
-    uint32_t sumSize;
-
-    Scan(Buffer&& scan_, Buffer&& sum_, uint32_t sSize)
-        : scan(std::move(scan_)),
-          sum(std::move(sum_)), sumSize( sSize )
-    {}
-};
 
 Buffer blellochScan( Buffer &input, uint32_t size, uint32_t wgSize );
 
@@ -36,8 +26,11 @@ layout(std430, binding = 2) buffer WgScans
     uint wgSum[];
 };
 
-layout(std430, binding = 3) buffer SizeCount
+layout(std430, binding = 3) buffer Dispatch
 {
+    uint gX;
+    uint gY;
+    uint gZ;
     uint sizeCount;
 };
 
@@ -129,6 +122,93 @@ void main()
 }
 )";
 
+inline const std::string updateDispatchSrc = R"(
+#version 430
+
+layout(local_size_x = 1) in;
+
+layout(std430, binding = 0) buffer Counter
+{
+    uint sizeCount;
+};
+
+const uint THREADS = 64u;
+
+layout(std430, binding = 1) buffer Dispatch
+{
+    uint gX;
+    uint gY;
+    uint gZ;
+    uint counter;
+};
+
+void main()
+{
+
+    counter = sizeCount;    
+
+    if( sizeCount <= 1 ) {
+        gX = 0;
+        gY = 1;
+        gZ = 1;
+
+        return;
+    }
+
+    gX = (sizeCount + THREADS - 1) / THREADS;
+    gY = 1;
+    gZ = 1;
+
+    // sizeCount = gX;
+}
+)";
+
+inline const std::string updateCounterSrc = R"(
+#version 430
+
+layout(local_size_x = 1) in;
+
+layout(std430, binding = 0) buffer Counter
+{
+    uint sizeCount;
+};
+
+layout(std430, binding = 1) buffer Dispatch
+{
+    uint gX;
+    uint gY;
+    uint gZ;
+};
+
+void main()
+{
+    sizeCount = gX;
+}
+)";
+
+struct Scan {
+    Buffer scan;
+    Buffer sum;
+    Buffer dispatch;
+
+    Scan(Buffer&& scan_, Buffer&& sum_, Buffer&& sSize)
+        : scan(std::move(scan_)),
+          sum(std::move(sum_)), dispatch( sSize )
+    {}
+};
+
+struct WgDispatch {
+    uint32_t groupX;
+    uint32_t groupY;
+    uint32_t groupZ;
+    uint32_t count;
+
+    WgDispatch( uint32_t gX, uint32_t gY, uint32_t gZ, uint32_t c ) 
+    : groupX( gX ), groupY( gY ), groupZ( gZ ), count( c )
+    {};
+    
+    WgDispatch() = default;
+};
 
 class BlellochScan {
 
@@ -137,7 +217,7 @@ class BlellochScan {
     size_t maxSize;
     uint32_t wgSize;
 
-    Program scanSums, addSums;
+    Program scanSums, addSums, updateCounter, updateDispatch;
     Buffer sizeCount;
 
     public:
@@ -145,7 +225,9 @@ class BlellochScan {
     : maxSize(size),
       wgSize(THREADS),
       scanSums(scanScanSrc),
-      addSums(addScansSrc) {
+      addSums(addScansSrc),
+      updateCounter( updateCounterSrc ),
+      updateDispatch( updateDispatchSrc) {
 
         Buffer sc( 
             GL_SHADER_STORAGE_BUFFER,
@@ -154,6 +236,9 @@ class BlellochScan {
             GL_DYNAMIC_COPY
         );
         sizeCount = std::move( sc );
+
+        // std::vector<uint32_t> e = sizeCount.toCPU<uint32_t>();
+        // printf( "size count: %d\n", e[0] );
 
         size_t n = size;
 
@@ -176,9 +261,24 @@ class BlellochScan {
                 GL_DYNAMIC_COPY
             );
 
-            levels.emplace_back( std::move(flagsSSBO), std::move(wgSumSSBO), n );
+            WgDispatch initDispVals( n, 1, 1, n );
+
+            Buffer wgDispatch(
+                GL_SHADER_STORAGE_BUFFER,
+                sizeof(WgDispatch),
+                nullptr,
+                GL_DYNAMIC_COPY
+            );
+
+            Scan s( std::move(flagsSSBO), std::move(wgSumSSBO), std::move(wgDispatch) );
+
+            levels.push_back( std::move(s) );
         }
 
+    }
+
+    Buffer &counter() {
+        return sizeCount;
     }
 
     Buffer& operator ()( Buffer &input, uint32_t size, uint32_t wgSize );
