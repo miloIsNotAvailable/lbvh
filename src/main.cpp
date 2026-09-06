@@ -506,7 +506,7 @@ int main()
     ShadowRays shadows( s );
     Contribution contrib( s );
 
-    const int MAX_ITER = 3;
+    const int MAX_ITER = 32;
     uint32_t iter = uint32_t( MAX_ITER );
     film.iteration.update( &iter, sizeof( uint32_t ) );
 
@@ -517,7 +517,9 @@ int main()
         film.L.update( std::vector<glm::vec4>(s, glm::vec4(0.0f)).data(), s * sizeof( glm::vec4 ) );
         film.beta.update( std::vector<glm::vec4>(s, glm::vec4(1.0f)).data(), s * sizeof( glm::vec4 ) );
 
-        Random2D rand = sobol.random2D( s, dims, 23757628 );
+        uint32_t it = uint32_t( i ); 
+
+        Random2D rand = sobol.random2D( s, dims, 23757628, it );
         Buffer &out = thinLens(s, rand, film);
 
         for( int bounces = 0; bounces < 7; bounces ++ ) {
@@ -565,7 +567,7 @@ int main()
             // printf( "hit emissive rays: %d/%d\n", sum_, int(hitEm.size()) );
 
 
-            Random2D randShadow = sobol.random2D( s, dims, 23757628 );
+            Random2D randShadow = sobol.random2D( s, dims, 23757628, it );
 
             Buffer &shadowOut = shadows.generate( s, out, tOut, traverse.triIds, normalsSSBO, traverse.dead, film.light, randShadow );
             
@@ -623,8 +625,8 @@ int main()
             );
 
 
-            Random2D randBSDF = sobol.random2D( s, dims, 23757628 );
-            Buffer randRR = sobol.random1D( s, dims, 23757628 );
+            Random2D randBSDF = sobol.random2D( s, dims, 23757628, it );
+            Buffer randRR = sobol.random1D( s, dims, 23757628, it );
             contrib.sampleBSDF(
                 s,
                 out,
@@ -681,7 +683,7 @@ int main()
     }
 
     stbi_write_jpg(
-        "sobol2D.jpg",
+        "sobol2D1.jpg",
         WIDTH,
         HEIGHT,
         3,

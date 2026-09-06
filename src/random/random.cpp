@@ -40,14 +40,16 @@ Random2D WhiteNoise::random2D( uint32_t size ) {
     return outRand;
 }
 
-void Sobol::rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed_ ) {
+void Sobol::rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed_, uint32_t i ) {
 
     dim.update( &d, sizeof(uint32_t) );
     seed.update( &seed_, sizeof(uint32_t) );
+    iter.update( &i, sizeof(uint32_t) );
 
     GLuint id = 0;
     inp.bindGPU( id );
     v_k.bindGPU( id );
+    iter.bindGPU( id );
     id = 0;
     dim.bindGPU( id );
     seed.bindGPU( id );
@@ -57,21 +59,21 @@ void Sobol::rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed_ ) {
 
 }
 
-Buffer& Sobol::random1D( uint32_t size, uint32_t& d, uint32_t seed_ ) {
+Buffer& Sobol::random1D( uint32_t size, uint32_t& d, uint32_t seed_, uint32_t i ) {
 
-    rand( data, size, d, seed_ );
+    rand( data, size, d, seed_, i );
     
     d+=1;
 
     return data;
 }
 
-Random2D Sobol::random2D( uint32_t size, uint32_t& d, uint32_t seed_ ) {
+Random2D Sobol::random2D( uint32_t size, uint32_t& d, uint32_t seed_, uint32_t i ) {
 
     Random2D rand2D( size );
 
-    rand( rand2D.X(), size, d, seed_ ^ d );
-    rand( rand2D.Y(), size, d + 1, seed_ ^ (d+1) );
+    rand( rand2D.X(), size, d, seed_ ^ d, i );
+    rand( rand2D.Y(), size, d + 1, seed_ ^ (d+1), i );
 
     d+=2;
 

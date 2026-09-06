@@ -209,6 +209,11 @@ layout(std430, binding = 1) buffer Directions
     uint directions[];
 };
 
+layout(std430, binding = 2) buffer SampleIdx
+{
+    uint iter;
+};
+
 layout(std140, binding = 0) uniform Dimension
 {
     uint dim;
@@ -261,7 +266,7 @@ void main() {
         return;
 
     uint v = 0;
-    uint x = id;
+    uint x = id + iter;
     for (int i = 0; x != 0; ++i, x >>= 1)
         if ((x & 1) != 0u)
             v = (v ^ directions[i + dim * 32] );
@@ -284,9 +289,9 @@ class Sobol {
     const int DIMS = 10; 
     uint32_t size;
     
-    Buffer dim, data, v_k, seed;
+    Buffer dim, data, v_k, seed, iter;
 
-    void rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed );
+    void rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed, uint32_t i );
 
     public:
 
@@ -312,6 +317,12 @@ class Sobol {
     v_k(
         GL_SHADER_STORAGE_BUFFER,
         DIMS * 32 * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY   
+    ),
+    iter(
+        GL_SHADER_STORAGE_BUFFER,
+        sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY   
     ),
@@ -383,6 +394,6 @@ class Sobol {
         }
     }
 
-    Buffer &random1D( uint32_t size, uint32_t& dim, uint32_t seed );
-    Random2D random2D( uint32_t size, uint32_t& dim, uint32_t seed );
+    Buffer &random1D( uint32_t size, uint32_t& dim, uint32_t seed, uint32_t i );
+    Random2D random2D( uint32_t size, uint32_t& dim, uint32_t seed, uint32_t i );
 };
