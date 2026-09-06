@@ -266,7 +266,7 @@ void main() {
         return;
 
     uint v = 0;
-    uint x = id + iter;
+    uint x = iter;
     for (int i = 0; x != 0; ++i, x >>= 1)
         if ((x & 1) != 0u)
             v = (v ^ directions[i + dim * 32] );

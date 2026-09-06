@@ -268,13 +268,19 @@ R"(
         uint tId = uint(triIds[ id ]);
         vec3 nor = normals[ tId ].xyz;
 
+        if (dot(dir, nor) > 0.0)
+            nor = -nor;
+
         uint matIdx = uint(triangles[tId].matId);
         vec3 color = materials[matIdx].diffuse.xyz / PI;
 
         vec3 bounceDir = RandomUnitVectorInHemisphereOf( nor, vec2(bx[id], by[id]) );
         
         float cosTheta = max(dot(nor, bounceDir), 0.);
-        // if (cosTheta <= 0.) return;
+        if (cosTheta <= 0.) {
+            dead[id] = 1u;
+            return;
+        };
 
         float pdf_bounce = cosTheta / PI;
 
@@ -444,12 +450,12 @@ inline const std::string contributeEmissiveSrc = R"(
             float dist2 = dot( lDist, lDist );
 
             float cosThetaL = max( 0.f, dot( light.normal.xyz, -liray ) );
-            float pdf_area = 1. / (PI * r * r);
-            float pdf_omega = pdf_area * dist2 / cosThetaL;
-            // vec3 Li = Le / pdf_omega;
-
-            if( cosThetaL > 0 )
+            
+            if( cosThetaL > 0 ) {                
+                float pdf_area = 1. / (PI * r * r);
+                float pdf_omega = pdf_area * dist2 / cosThetaL;
                 w = PowerHeuristic( 1., pdf_bsdf[id], 1., pdf_omega);
+            }
         }
 
         L[id] += beta[id] * w * light.Le;
