@@ -8,6 +8,7 @@
 
 // #include "../../utils/headers/utils.hpp"
 #include <utils.hpp>
+#include <scan.hpp>
 
 // template<size_t N>
 // struct RadixData {
@@ -39,25 +40,35 @@ void modifyBufferData(
     GLsizeiptr size,
     const void* data);
 
-// void dispatchProgram( GLuint u, GLuint v, GLuint w, GLuint computeProgram );
+inline const std::string swapperSrc = R"(
+#version 430
 
-void extract( std::vector<uint32_t> data );
-void scan( std::vector<uint32_t> data );
-void scatter( std::vector<uint32_t> data );
+layout(local_size_x = 64) in;
 
-// void bindBuffer( GLuint &ssbo, GLsizeiptr size, const void * data, GLenum usage );
-
-class Radix {
-
-    private: 
-    size_t size;
-    GLuint inputSSBO, extractSSBO, outputSSBO, uniformUBO;
-    GLuint extractProgram, scanProgram, scatterProgram;
-
-    public: 
-    Radix( GLuint inputSSBO, size_t size );
-    GLuint operator()( uint32_t bit, GLuint gX, GLuint gY, GLuint t );
+layout(std430, binding = 0) buffer TriIn
+{
+    uint nums[];
 };
+
+layout(std430, binding = 1) buffer TriOut
+{
+    uint numsOut[];
+};
+
+layout(std430, binding = 2) buffer IdsIn
+{
+    uint offsets[];
+};
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+
+    if (id >= nums.length())
+        return;
+
+    numsOut[ offsets[id] ] = nums[id];
+}
+)";
 
 const std::string radixLayout = R"(#version 430
 
@@ -184,20 +195,20 @@ layout(std430, binding = 1) buffer Scan
     uint scanned[];
 };
 
-layout(std430, binding = 2) buffer trIds
+// layout(std430, binding = 2) buffer trIds
+// {
+//     uint triIds[];
+// };
+
+layout(std430, binding = 2) buffer OutMorton
 {
-    uint triIds[];
+    uint outData[];
 };
 
-layout(std430, binding = 3) buffer OutMorton
-{
-    uint outMorton[];
-};
-
-layout(std430, binding = 4) buffer OuttrIds
-{
-    uint outTriIds[];
-};
+// layout(std430, binding = 4) buffer OuttrIds
+// {
+//     uint outTriIds[];
+// };
 
 layout(std140, binding = 0) uniform Params
 {
@@ -227,8 +238,8 @@ void main()
         ind = totalZeros + onesBefore;
     }
 
-    outMorton[ind] = morton[id];
-    outTriIds[ind] = triIds[id];
+    outData[id] = ind;
+    // outTriIds[ind] = triIds[id];
     }
 )";
 
@@ -245,3 +256,101 @@ void main()
     trianglesOut[id] = triangles[triangleIndex];
     }
 )";
+
+/**
+ * @brief Radix sort usage example.
+ *
+ * Pass the unpadded data size to the Radix constructor.
+ *
+ * @example
+ * std::vector<uint32_t> data = { 4, 2, 3, 1, 5 };
+ *
+ * data.resize(64, 0);
+ *
+ * Buffer inpA(
+ *     GL_SHADER_STORAGE_BUFFER,
+ *     data.size() * sizeof(uint32_t),
+ *     data.data(),
+ *     GL_DYNAMIC_COPY
+ * );
+ *
+ * Buffer inpB(
+ *     GL_SHADER_STORAGE_BUFFER,
+ *     data.size() * sizeof(uint32_t),
+ *     data.data(),
+ *     GL_DYNAMIC_COPY
+ * );
+ *
+ * Program swapper(swapperSrc);
+ *
+ * Radix sort(data.size(), 64);
+ *
+ * for (int i = 0; i < 32; i++) {
+ *     Buffer& out = sort(inpA, i);
+ *
+ *     inpA.toGPU(0);
+ *     inpB.toGPU(1);
+ *     out.toGPU(2);
+ *
+ *     swapper((data.size() + 63) / 64, 1, 1);
+ *     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+ *
+ *     std::swap(inpA, inpB);
+ * }
+ *
+ * std::vector<uint32_t> a = inpB.toCPU<uint32_t>();
+ *
+ * for (auto& d : a) {
+ *     printf("%d\n", d);
+ * }
+ *
+ * std::cout << "\n\n";
+ */
+class Radix {
+
+    private: 
+    size_t size, groups;
+
+    Buffer input, uniformUBO, extractSSBO, outputSSBO;
+
+    Program extract;
+    Program scan;
+    Program scatter;
+
+    BlellochScan scanner;
+
+    public: 
+    Radix() = default;
+    Radix( size_t size, uint32_t THREADS ) 
+    : extract( radixExtractSrc ),
+    scanner(  size, THREADS ),
+    scatter( radixScatterSrc ),
+
+    extractSSBO( 
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY
+    ),
+
+    outputSSBO( 
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY
+    )
+    {
+
+        Buffer uUBO(
+            GL_UNIFORM_BUFFER,
+            sizeof(uint32_t),
+            nullptr,
+            GL_DYNAMIC_DRAW
+        );
+
+        uniformUBO = std::move(uUBO);
+
+        groups = (size + THREADS - 1) / THREADS;
+    }
+    Buffer& operator()( Buffer& input, uint32_t bit );
+};

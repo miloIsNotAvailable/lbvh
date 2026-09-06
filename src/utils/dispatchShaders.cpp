@@ -40,6 +40,12 @@ void Buffer::toGPU( GLuint idx ) {
     glBindBufferBase(target, idx, buffer);
 }
 
+void Buffer::bindGPU( GLuint& idx ) {
+    glBindBuffer( target, buffer );
+    glBindBufferBase(target, idx, buffer);
+    idx++;
+}
+
 void Buffer::update( const void* data, GLsizeiptr dataSize, GLintptr off ) {
     glBindBuffer(target, buffer);
 

@@ -214,15 +214,18 @@ class BlellochScan {
 
     private:
     std::vector<Scan> levels;
-    size_t maxSize;
+    uint32_t maxSize;
     uint32_t wgSize;
 
     Program scanSums, addSums, updateCounter, updateDispatch;
     Buffer sizeCount;
 
     public:
+
+    BlellochScan() = default;
+
     BlellochScan( size_t size, uint32_t THREADS ) 
-    : maxSize(size),
+    : maxSize(uint32_t(size)),
       wgSize(THREADS),
       scanSums(scanScanSrc),
       addSums(addScansSrc),
@@ -266,7 +269,7 @@ class BlellochScan {
             Buffer wgDispatch(
                 GL_SHADER_STORAGE_BUFFER,
                 sizeof(WgDispatch),
-                nullptr,
+                &initDispVals,
                 GL_DYNAMIC_COPY
             );
 

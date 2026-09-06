@@ -131,7 +131,7 @@ Mesh __LoadObj__( std::string inputfile, std::string mtlfile ) {
 
             // per-face material
             int matId = shapes[s].mesh.material_ids[f];
-            tinyobj::material_t m = materials[ matId ];
+            // tinyobj::material_t m = materials[ matId ];
             // t.n=normal;
             // materials.push_back(  );
             // materials[ matId ] = m;

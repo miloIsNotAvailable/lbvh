@@ -61,6 +61,16 @@ target_include_directories(peepoo PRIVATE
     ${SRC_HEADER_DIRS}
 )
 
+# target_compile_options(peepoo PRIVATE
+#     /fsanitize=address
+#     /Zi
+# )
+
+# target_link_options(peepoo PRIVATE
+#     /fsanitize=address
+# )
+
+
 message(STATUS "SOURCE FILES: ${SRC_HEADER_DIRS}")
 
 # Needed on Linux

@@ -28,7 +28,8 @@ struct Material {
     transmittance( toVec4(m.transmittance) ),
     shininess( m.shininess ),
     ior( m.ior ),
-    dissolve( m.dissolve )
+    dissolve( m.dissolve ),
+    emission( glm::vec4(0.) )
     {}
 };
 

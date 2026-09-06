@@ -2,6 +2,9 @@
 #include <utils.hpp>
 #include <glm/glm.hpp>
 #include <triangle.hpp>
+#include <radix.hpp>
+#include <morton.hpp>
+#include <vector>
 
 struct Node {
     AABB aabb;
@@ -351,46 +354,6 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         );
     }
 
-    bool intersectSphere(
-        vec3 o,
-        vec3 d,
-        vec3 center,
-        float radius,
-        float tmin,
-        float tmax,
-        out float tHit,
-        out vec3 hitPoint,
-        out vec3 normal
-    ) {
-        vec3 oc = o - center;
-
-        // assumes d is normalized
-        float b = dot(oc, d);
-        float c = dot(oc, oc) - radius * radius;
-
-        float disc = b * b - c;
-
-        if (disc < 0.0)
-            return false;
-
-        float s = sqrt(disc);
-
-        float t = -b - s;
-
-        if (t < tmin || t > tmax) {
-            t = -b + s;
-
-            if (t < tmin || t > tmax)
-                return false;
-        }
-
-        tHit = t;
-        hitPoint = o + d * t;
-        normal = (hitPoint - center) / radius;
-
-        return true;
-    }
-
     void main()
     {
         uint id = gl_GlobalInvocationID.x;
@@ -412,42 +375,14 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         V[size++]=0;
 
         float closestT = 1e30f;
-        vec3 hitPoint;
-        int matId;
-        int triId;
+        int matId = -1;
+        int triId = -1;
 
-        float lightT;
-        vec3 lightHit;
-        vec3 lightNormal;
-
+        uint dead = 1u;
 
         uint visits = 0u;
         while( size > 0 ) {
-
-            ++visits;
-            if( visits > 1000 ) {
-                return;
-            }
             
-            // bool hitLight = intersectSphere(
-            //     ray.o.xyz,
-            //     ray.dir.xyz,
-            //     vec3(0., 200., 0),
-            //     20.f,
-            //     ray.tmin,
-            //     closestT,
-            //     lightT,
-            //     lightHit,
-            //     lightNormal
-            // );
-
-            // if (hitLight) {
-            //     closestT = lightT;
-            //     matId=0;
-            //     triId=50000000;
-            // }
-            
-
             uint idx = V[--size];
             Node node = nodes[ idx ];
 
@@ -474,6 +409,7 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
                 );
 
                 if( hit.hit && hit.t < closestT ) {
+                    dead = 0u;
                     closestT = hit.t;
                     // hitTri = top.tr;
                     triId = int(trIdx);
@@ -515,28 +451,29 @@ inline const std::string traverseSrc = traverseRayHeader + R"(
         }
 
         // rays[ id ].hit = ray.o + closestT * ray.dir;
-        if( closestT >= 1e10f ) {
+        // if( closestT >= 1e10f ) {
         
-            // hits[id].hit = vec4( -1. );
-            // hits[id].t = -1.;
-            // hits[id].color = vec4(0.);
-            rays[id].t = -1;
-            // rays[id].matId = -1;
-            rays[id].triId = -1;
-            rays[id].dead = 1;
-            scan[id]=1;
+        //     // hits[id].hit = vec4( -1. );
+        //     // hits[id].t = -1.;
+        //     // hits[id].color = vec4(0.);
+        //     // rays[id].t = -1;
+        //     // rays[id].matId = -1;
+        //     // rays[id].triId = -1;
+        //     rays[id].dead = 1;
+        //     scan[id]=1;
             
-        } else {
-            // hits[id].hit = ray.o + closestT * ray.dir;
-            // hits[id].t = closestT;
-            // hits[id].color = materials[ matId ].diffuse;
+        // } else {
+        //     // hits[id].hit = ray.o + closestT * ray.dir;
+        //     // hits[id].t = closestT;
+        //     // hits[id].color = materials[ matId ].diffuse;
 
-            rays[id].t = closestT;
-            // rays[id].matId = matId;
-            rays[id].triId = triId;
-            rays[id].dead = 0;
-            scan[id]=0;
-        }
+        //     }
+
+        rays[id].t = dead == 1u ? -1 : closestT;
+        // rays[id].matId = matId;
+        rays[id].triId = triId;
+        rays[id].dead = dead;
+        scan[id]=dead;
     }
     )";
 
@@ -565,6 +502,11 @@ inline const std::string traverseShadowRayHeader = layout + structs + R"(
     layout(std430, binding = 4) buffer RayCount
     {
         uint activeRays;
+    };
+
+    layout(std430, binding = 5) buffer RaysActive
+    {
+        Ray rays[];
     };
 
     layout(std140, binding = 0) uniform Sizes
@@ -648,6 +590,11 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
         if (id >= activeRays)
             return;
 
+        if( rays[id].dead == 1u ) {
+            // shadowRays[id].occluded = 1u;
+            return;
+        }
+
         ShadowRay ray = shadowRays[id];
         shadowRays[id].occluded = 0u;
 
@@ -720,3 +667,134 @@ inline const std::string traverseShadowRaySrc = traverseShadowRayHeader + R"(
         }
     }
     )";
+
+inline const std::string trSwapperSrc = R"(
+#version 430
+
+layout(local_size_x = 64) in;)" +
+structs + 
+R"(
+
+layout(std430, binding = 0) buffer TriIn
+{
+    uint triIn[];
+};
+
+layout(std430, binding = 1) buffer TriOut
+{
+    uint triOut[];
+};
+
+layout(std430, binding = 2) buffer MortonIn
+{
+    uint mortonIn[];
+};
+
+layout(std430, binding = 3) buffer MortonOut
+{
+    uint mortonOut[];
+};
+
+layout(std430, binding = 4) buffer IdsIn
+{
+    uint offsets[];
+};
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+
+    if (id >= offsets.length())
+        return;
+
+    mortonOut[ offsets[id] ] = mortonIn[id];
+    triOut[ offsets[id] ] = triIn[id];
+}
+)";
+
+class LBVH {
+
+    private: 
+    Radix sort;
+
+    Buffer mortonSSBO, mortonBSSBO, trianglesSSBO, 
+    sceneUBO, triangleSizeUBO,
+    bvhSSBO, triIdBSSBO;
+
+    Program lbvh, aabbs, trSwapper, morton;
+    
+    size_t size;
+    std::vector<Node> nodes;
+
+    public:
+    Buffer triIdASSBO;
+    LBVH( AABB& aabb, uint32_t THREADS, size_t size ) :  
+    size( size ),
+    nodes( size * 2  - 1 ),
+
+    triIdBSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY
+    ),
+    mortonSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY
+    ),
+    mortonBSSBO(
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY
+    ),
+    sceneUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof(AABB),
+        &aabb,
+        GL_DYNAMIC_COPY
+    ),
+    
+    triangleSizeUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof( uint32_t ),
+        &size,
+        GL_DYNAMIC_COPY
+    ),
+
+    lbvh( lbvhSrc ),
+    aabbs( aabbSrc ),
+    trSwapper( trSwapperSrc ),
+    morton( mortonSrc ),
+    sort( size, THREADS )
+    
+    { 
+
+        Buffer bSSBO(
+            GL_SHADER_STORAGE_BUFFER,
+            nodes.size() * sizeof(Node),
+            nodes.data(),
+            GL_DYNAMIC_COPY
+        );
+
+        bvhSSBO = std::move( bSSBO );
+
+        std::vector<uint32_t> ids(size);
+
+        for (uint32_t i = 0; i < size; ++i)
+            ids[i] = i;
+
+
+        Buffer triIdASSBO__(
+            GL_SHADER_STORAGE_BUFFER,
+            size * sizeof(uint32_t),
+            ids.data(),
+            GL_DYNAMIC_COPY
+        );
+        triIdASSBO = std::move( triIdASSBO__ );
+
+     }
+
+    Buffer& operator() ( Buffer &trianglesSSBO  );
+};

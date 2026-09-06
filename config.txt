@@ -1,2 +1,2 @@
-obj=../objs/Room.obj
+obj=../objs/cornell_box.obj
 mtl=../objs/

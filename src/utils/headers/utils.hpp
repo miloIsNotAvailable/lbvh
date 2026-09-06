@@ -17,34 +17,33 @@ void dispatchProgram( GLuint u, GLuint v, GLuint w, GLuint computeProgram );
 GLuint compileShader( std::string &source );
 GLuint linkProgram( GLuint shader );
 
-    template<typename F>
-    double measureGPU(const char* name, F&& func)
-    {
-        GLuint query;
-        glGenQueries(1, &query);
+template<typename F>
+double measureGPU(const char* name, F&& func)
+{
+    GLuint query;
+    glGenQueries(1, &query);
 
-        glBeginQuery(GL_TIME_ELAPSED, query);
+    glBeginQuery(GL_TIME_ELAPSED, query);
 
-        func();
+    func();
 
-        glEndQuery(GL_TIME_ELAPSED);
+    glEndQuery(GL_TIME_ELAPSED);
 
-        GLuint64 elapsedNs = 0;
-        glGetQueryObjectui64v(
-            query,
-            GL_QUERY_RESULT,
-            &elapsedNs
-        );
+    GLuint64 elapsedNs = 0;
+    glGetQueryObjectui64v(
+        query,
+        GL_QUERY_RESULT,
+        &elapsedNs
+    );
 
-        glDeleteQueries(1, &query);
+    glDeleteQueries(1, &query);
 
-        double ms = double(elapsedNs) / 1'000'000.0;
+    double ms = double(elapsedNs) / 1'000'000.0;
 
-        printf("%s: %.3f ms\n", name, ms);
+    printf("%s: %.3f ms\n", name, ms);
 
-        return ms;
-    }
-
+    return ms;
+}
 
 struct DispatchArgs {
     uint32_t x;
@@ -57,13 +56,15 @@ void barrier( GLbitfield barrier );
 
 class Buffer {
     private:
-    GLuint buffer;
-    GLenum target, usage;
-    GLsizeiptr size;
+    GLuint buffer = 0;
+    GLenum target = 0;
+    GLenum usage = 0;
+    GLsizeiptr size = 0;
     void* data = nullptr;
     public:
     Buffer( GLenum target, GLsizeiptr size, const void * data, GLenum usage );
     void toGPU( GLuint index );
+    void bindGPU( GLuint& off );
     GLuint id();
     template<typename T> std::vector<T> toCPU() {
         std::vector<T> v(size / sizeof(T));
@@ -128,16 +129,18 @@ class Buffer {
         }
     }
 
-    Buffer() {};
+    Buffer() = default;
 
     Buffer(Buffer&& other) noexcept
         : buffer(other.buffer),
           target(other.target),
           size(other.size),
-          data(other.data)
+          data(other.data),
+          usage(other.usage)
     {
         other.buffer = 0;
         other.target = 0;
+        other.usage = 0;
         other.size = 0;
         other.data = nullptr;
     }
@@ -154,12 +157,14 @@ class Buffer {
 
             buffer = other.buffer;
             target = other.target;
+            usage  = other.usage;
             size   = other.size;
             data   = other.data;
 
             other.buffer = 0;
             other.target = 0;
             other.size   = 0;
+            other.usage  = 0;
             other.data   = nullptr;
         }
 
@@ -169,6 +174,7 @@ class Buffer {
     Buffer(const Buffer& other)
         : target(other.target),
         size(other.size),
+        usage(other.usage),
         data(nullptr)
     {
         glGenBuffers(1, &buffer);
@@ -272,6 +278,16 @@ inline const std::string structs = R"(
         int matId;
     };
     
+    struct TriangleGPU {
+        vec4 u, v, w;
+    };
+
+    struct Light {
+        vec4 pos;
+        vec4 Le;
+        vec4 normal;
+    };
+
     struct Node {
         AABB aabb;
         int parent;
@@ -285,6 +301,11 @@ inline const std::string structs = R"(
         vec4 pos;
         vec4 nor;
         uint valid;
+    };
+
+    struct RayDir {
+        vec4 o;
+        vec4 dir;
     };
 
     struct Ray {
@@ -351,6 +372,15 @@ inline const std::string structs = R"(
         float tFar;
     };
 
+    uint hash32(uint x)
+    {
+        x ^= x >> 16;
+        x *= 0x7feb352du;
+        x ^= x >> 15;
+        x *= 0x846ca68bu;
+        x ^= x >> 16;
+        return x;
+    }
 
     uint pcg(inout uint state)
     {
