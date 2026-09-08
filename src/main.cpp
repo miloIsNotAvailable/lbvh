@@ -506,7 +506,7 @@ int main()
     ShadowRays shadows( s );
     Contribution contrib( s );
 
-    const int MAX_ITER = 64;
+    const int MAX_ITER = 32;
     uint32_t iter = uint32_t( MAX_ITER );
     film.iteration.update( &iter, sizeof( uint32_t ) );
 
@@ -516,7 +516,9 @@ int main()
 
         film.L.update( std::vector<glm::vec4>(s, glm::vec4(0.0f)).data(), s * sizeof( glm::vec4 ) );
         film.beta.update( std::vector<glm::vec4>(s, glm::vec4(1.0f)).data(), s * sizeof( glm::vec4 ) );
-        traverse.dead.update( std::vector<float>(s, 0.f).data(), s * sizeof( float ) );
+        traverse.dead.update( std::vector<uint32_t>(s, 0).data(), s * sizeof( uint32_t ) );
+        traverse.hitEmissive.update( std::vector<uint32_t>(s, 0).data(), s * sizeof( uint32_t ) );
+        contrib.pdf_bsdf.update( std::vector<float>(s, 0.f).data(), s * sizeof( float ) );
 
         uint32_t it = uint32_t( i ); 
 
@@ -661,16 +663,40 @@ int main()
         contrib.addColor( s, film.L, film.pixel, film.iteration );
     }
 
-    int sum = 0;
-    for( auto &d : film.pixel.toCPU<glm::vec4>() ) {
-        if( d.x * .2126 + d.y* .715 + d.z * .0722 > 10. ) {
-            sum ++;
-        }
+    int nanCount = 0;
+    int infCount = 0;
+    int invalidCount = 0;
+
+    for (const auto& d : film.pixel.toCPU<glm::vec4>()) {
+        bool hasNan =
+            std::isnan(d.x) ||
+            std::isnan(d.y) ||
+            std::isnan(d.z);
+
+        bool hasInf =
+            std::isinf(d.x) ||
+            std::isinf(d.y) ||
+            std::isinf(d.z);
+
+        if (hasNan) nanCount++;
+        if (hasInf) infCount++;
+        if (hasNan || hasInf) invalidCount++;
     }
 
-    // 15936 32spp
-    // 27403 10spp
-    printf( "eeek: %d\n", sum );
+    printf("NaN pixels: %d\n", nanCount);
+    printf("Inf pixels: %d\n", infCount);
+    printf("Invalid pixels: %d\n", invalidCount);
+
+    // int sum = 0;
+    // for( auto &d : film.pixel.toCPU<glm::vec4>() ) {
+    //     if( d.x * .2126 + d.y* .715 + d.z * .0722 > 10. ) {
+    //         sum ++;
+    //     }
+    // }
+
+    // // 15936 32spp
+    // // 27403 10spp
+    // printf( "eeek: %d\n", sum );
 
 //     Program denoise( denoiseSrc );
 

@@ -443,19 +443,22 @@ inline const std::string contributeEmissiveSrc = R"(
 
         vec3 hit = o + raysHitT[id] * d;
 
-        if( bounce > 0 ) {
-        
-            vec3 lDist = hit - o;
-            vec3 liray = normalize( lDist );
-            float dist2 = dot( lDist, lDist );
+        vec3 lDist = hit - o;
+        vec3 liray = normalize( lDist );
+        float dist2 = dot( lDist, lDist );
 
-            float cosThetaL = max( 0.f, dot( light.normal.xyz, -liray ) );
-            
-            if( cosThetaL > 0.f ) {                
-                float pdf_area = 1. / (PI * r * r);
-                float pdf_omega = pdf_area * dist2 / cosThetaL;
-                w = PowerHeuristic( 1., pdf_bsdf[id], 1., pdf_omega);
-            }
+        float cosThetaL = max( 0.f, dot( light.normal.xyz, -liray ) );
+        
+        if( cosThetaL <= 0.f ) {
+            dead[id] = 1;
+            return;
+        }
+
+        if( bounce > 0 ) {
+          
+            float pdf_area = 1. / (PI * r * r);
+            float pdf_omega = pdf_area * dist2 / cosThetaL;
+            w = PowerHeuristic( 1., pdf_bsdf[id], 1., pdf_omega);
         }
 
         L[id] += beta[id] * w * light.Le;
@@ -466,10 +469,12 @@ inline const std::string contributeEmissiveSrc = R"(
 class Contribution {
     private:
 
-    Buffer pdf_bsdf, bounce;
+    Buffer bounce;
     Program addEmissive, addDirect, sampleDir, addCol;
 
     public:
+    Buffer pdf_bsdf;
+
     Contribution( uint32_t size ):
 
     pdf_bsdf(
