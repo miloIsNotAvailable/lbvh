@@ -286,20 +286,20 @@ R"(
 
         beta[id] *= vec4(color * cosTheta / pdf_bounce, 0.f);
 
-        if( bounces > 2 ) {
-            float p = clamp(
-                max(beta[id].x, max(beta[id].y, beta[id].z)),
-                0.05,
-                0.95
-            );
+        // if( bounces > 2 ) {
+        //     float p = clamp(
+        //         max(beta[id].x, max(beta[id].y, beta[id].z)),
+        //         0.05,
+        //         0.95
+        //     );
             
-            if( p < bz[id] ) {
-                dead[id] = 1u;
-                return;
-            }
+        //     if( p < bz[id] ) {
+        //         dead[id] = 1u;
+        //         return;
+        //     }
     
-            beta[id] /= p;
-        }
+        //     beta[id] /= p;
+        // }
 
         // rays[id].o = pos + nor * EPS;
         // rays[id].dir = vec4( bounceDir, 0.f );
@@ -451,7 +451,7 @@ inline const std::string contributeEmissiveSrc = R"(
 
             float cosThetaL = max( 0.f, dot( light.normal.xyz, -liray ) );
             
-            if( cosThetaL > 0 ) {                
+            if( cosThetaL > 0.f ) {                
                 float pdf_area = 1. / (PI * r * r);
                 float pdf_omega = pdf_area * dist2 / cosThetaL;
                 w = PowerHeuristic( 1., pdf_bsdf[id], 1., pdf_omega);

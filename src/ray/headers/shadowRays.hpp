@@ -56,6 +56,10 @@ const inline std::string generateShadowSrc = R"(
     {
         float zy[];
     };
+    layout(std430, binding = 10) buffer HitEm
+    {
+        uint hitEmissive[];
+    };
 
     void main()
     {
@@ -66,6 +70,7 @@ const inline std::string generateShadowSrc = R"(
         if( id >= M ) return;
 
         if( dead[id] == 1 ) return;
+        if( hitEmissive[id] == 1 ) return;
 
         vec3 o = vec3(
             rays[id + M * 0],
@@ -172,6 +177,11 @@ layout(std430, binding = 8) buffer Normals
     vec4 normals[];
 };
 
+layout(std430, binding = 9) buffer HitEm
+{
+    uint hitEmissive[];
+};
+
 
 bool intersectTriangleShadow(
     vec3 o,
@@ -252,6 +262,7 @@ void main()
     occluded[id] = 0;
 
     if (dead[id] != 0u) return;
+    if (hitEmissive[id] != 0u) return;
 
     vec3 o = vec3(
         rays[id + M * 0],
@@ -414,7 +425,8 @@ class ShadowRays {
         Buffer &normals, 
         Buffer &dead,
         Buffer &light,
-        Random2D random2d
+        Random2D random2d,
+        Buffer &hitEmissive
     );
 
     Buffer& traverse( uint32_t size, 
@@ -423,5 +435,6 @@ class ShadowRays {
         Buffer &dead, 
         Buffer &tIds, 
         Buffer &light,
-        Buffer &normals );
+        Buffer &normals,
+        Buffer &hitEmissive );
 };

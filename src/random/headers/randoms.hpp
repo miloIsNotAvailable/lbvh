@@ -286,7 +286,7 @@ class Sobol {
 
     private:
 
-    const int DIMS = 10; 
+    const int DIMS = 1024; 
     uint32_t size;
     
     Buffer dim, data, v_k, seed, iter;

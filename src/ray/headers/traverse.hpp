@@ -165,7 +165,11 @@ void main()
 
     if (id >= M) return;
 
-    // if (dead[id] != 0u) return;
+    if (dead[id] == 1u) {
+        hitEmissive[id] = 0u;
+        // outTriId[id] = -1;
+        return;
+    };
 
     // uint sortedId = sortedIds[id];
 

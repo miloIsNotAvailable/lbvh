@@ -506,7 +506,7 @@ int main()
     ShadowRays shadows( s );
     Contribution contrib( s );
 
-    const int MAX_ITER = 32;
+    const int MAX_ITER = 64;
     uint32_t iter = uint32_t( MAX_ITER );
     film.iteration.update( &iter, sizeof( uint32_t ) );
 
@@ -516,6 +516,7 @@ int main()
 
         film.L.update( std::vector<glm::vec4>(s, glm::vec4(0.0f)).data(), s * sizeof( glm::vec4 ) );
         film.beta.update( std::vector<glm::vec4>(s, glm::vec4(1.0f)).data(), s * sizeof( glm::vec4 ) );
+        traverse.dead.update( std::vector<float>(s, 0.f).data(), s * sizeof( float ) );
 
         uint32_t it = uint32_t( i ); 
 
@@ -569,7 +570,15 @@ int main()
 
             Random2D randShadow = sobol.random2D( s, dims, 23757628, it );
 
-            Buffer &shadowOut = shadows.generate( s, out, tOut, traverse.triIds, normalsSSBO, traverse.dead, film.light, randShadow );
+            Buffer &shadowOut = shadows.generate( s,
+                out, 
+                tOut, 
+                traverse.triIds, 
+                normalsSSBO, 
+                traverse.dead, 
+                film.light, 
+                randShadow, 
+                traverse.hitEmissive );
             
             // std::vector<float> outDirs = shadowOut.toCPU<float>();
             // std::vector<float> tmaxs = shadows.tmax.toCPU<float>();
@@ -586,7 +595,14 @@ int main()
             //     printf( "%f, %f, %f, %f\n", d.x, d.y, d.z, tmaxs[i] );
             // }
             
-            Buffer &occ = shadows.traverse( s, lbvhBuffer, trianglesSSBO, traverse.dead, lbvh.triIdASSBO, film.light, normalsSSBO );
+            Buffer &occ = shadows.traverse( s, 
+                lbvhBuffer, 
+                trianglesSSBO, 
+                traverse.dead, 
+                lbvh.triIdASSBO, 
+                film.light, 
+                normalsSSBO,
+                traverse.hitEmissive );
 
             // std::vector<uint32_t> occluded = occ.toCPU<uint32_t>();
             // sum = 0;
@@ -645,6 +661,60 @@ int main()
         contrib.addColor( s, film.L, film.pixel, film.iteration );
     }
 
+    int sum = 0;
+    for( auto &d : film.pixel.toCPU<glm::vec4>() ) {
+        if( d.x * .2126 + d.y* .715 + d.z * .0722 > 10. ) {
+            sum ++;
+        }
+    }
+
+    // 15936 32spp
+    // 27403 10spp
+    printf( "eeek: %d\n", sum );
+
+//     Program denoise( denoiseSrc );
+
+//    Buffer pixelBSSBO(
+//         GL_SHADER_STORAGE_BUFFER,
+//         rays.size() * sizeof(Pixel),
+//         nullptr,
+//         GL_DYNAMIC_COPY
+//     );
+
+//     Buffer stepUBO(
+//         GL_UNIFORM_BUFFER,
+//         sizeof(int),
+//         nullptr,
+//         GL_DYNAMIC_COPY
+//     );
+
+    // for( int i = 0; i < 4; i ++ ) {
+
+    //     int step = 1 << i;
+
+    //     stepUBO.update( &step, sizeof( int ) );
+
+    //     pixelSSBO.toGPU( 0 );
+    //     atrousSSBO.toGPU( 1 );
+    //     offsetsSSBO.toGPU( 2 );
+    //     kernelSSBO.toGPU( 3 );
+    //     pixelBSSBO.toGPU( 4 );
+        
+    //     stepUBO.toGPU( 0 );
+    //     cameraUBO.toGPU( 1 );
+
+    //     denoise( groups, 1, 1 );
+    //     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    //     std::swap( pixelSSBO, pixelBSSBO );
+    // }
+
+    // std::vector<Pixel> pixelsB = pixelSSBO.toCPU<Pixel>();
+    // for( int i = 0; i < 20; i ++ ) {
+    //     Pixel p = pixelsB[ i ];
+    //     printf( "%f, %f, %f\n", p.col.x, p.col.y, p.col.z );
+    // } 
+
     std::vector<glm::vec4> outCol = film.pixel.toCPU<glm::vec4>();
 
     for( int i = 0; i < 10; i ++ ) {
@@ -683,7 +753,7 @@ int main()
     }
 
     stbi_write_jpg(
-        "sobol2D1.jpg",
+        "sobol2D2.jpg",
         WIDTH,
         HEIGHT,
         3,

@@ -8,7 +8,8 @@ Buffer& ShadowRays::generate(
     Buffer &normals, 
     Buffer &dead, 
     Buffer &light, 
-    Random2D random2d ) {
+    Random2D random2d,
+    Buffer &hitEmissive ) {
 
     GLuint idx = 0;
 
@@ -21,6 +22,7 @@ Buffer& ShadowRays::generate(
     normals.bindGPU( idx );
     tmax.bindGPU( idx );
     random2d.toGPU( idx );
+    hitEmissive.bindGPU( idx );
     // nor.toGPU( idx );
 
     genShadowRays( (size + 63) / 64, 1, 1 );
@@ -36,7 +38,8 @@ Buffer& ShadowRays::traverse(
         Buffer &dead, 
         Buffer &tIds, 
         Buffer &light,
-        Buffer &normals ) 
+        Buffer &normals,
+        Buffer &hitEmissive ) 
 {
 
     GLuint idx = 0;
@@ -49,6 +52,7 @@ Buffer& ShadowRays::traverse(
     tmax.bindGPU( idx );
     light.bindGPU( idx );
     nor.bindGPU( idx );
+    hitEmissive.bindGPU( idx );
 
     traverseShadowRays( (size + 63) / 64, 1, 1 );
     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
