@@ -510,19 +510,25 @@ int main()
     uint32_t iter = uint32_t( MAX_ITER );
     film.iteration.update( &iter, sizeof( uint32_t ) );
 
+    std::vector<glm::vec4> zero4(s, glm::vec4(0.0f));
+    std::vector<glm::vec4> one4(s, glm::vec4(1.0f));
+    std::vector<uint32_t> zeroU32(s, 0);
+    std::vector<float> zeroF32(s, 0.0f);
+
     for( int i = 0; i < MAX_ITER; i ++ ) {
 
         uint32_t dims = 0;
 
-        film.L.update( std::vector<glm::vec4>(s, glm::vec4(0.0f)).data(), s * sizeof( glm::vec4 ) );
-        film.beta.update( std::vector<glm::vec4>(s, glm::vec4(1.0f)).data(), s * sizeof( glm::vec4 ) );
-        traverse.dead.update( std::vector<uint32_t>(s, 0).data(), s * sizeof( uint32_t ) );
-        traverse.hitEmissive.update( std::vector<uint32_t>(s, 0).data(), s * sizeof( uint32_t ) );
-        contrib.pdf_bsdf.update( std::vector<float>(s, 0.f).data(), s * sizeof( float ) );
+        film.L.update(zero4.data(), s * sizeof(glm::vec4));
+        film.beta.update(one4.data(), s * sizeof(glm::vec4));
 
+        traverse.dead.update(zeroU32.data(), s * sizeof(uint32_t));
+        traverse.hitEmissive.update(zeroU32.data(), s * sizeof(uint32_t));
+        // contrib.pdf_bsdf.update(zeroF32.data(), s * sizeof(float));
+        
         uint32_t it = uint32_t( i ); 
 
-        Random2D rand = sobol.random2D( s, dims, 23757628, it );
+        Random2D &rand = sobol.random2D( s, dims, 23757628, it );
         Buffer &out = thinLens(s, rand, film);
 
         for( int bounces = 0; bounces < 7; bounces ++ ) {
@@ -570,7 +576,7 @@ int main()
             // printf( "hit emissive rays: %d/%d\n", sum_, int(hitEm.size()) );
 
 
-            Random2D randShadow = sobol.random2D( s, dims, 23757628, it );
+            Random2D &randShadow = sobol.random2D( s, dims, 23757628, it );
 
             Buffer &shadowOut = shadows.generate( s,
                 out, 
@@ -643,8 +649,8 @@ int main()
             );
 
 
-            Random2D randBSDF = sobol.random2D( s, dims, 23757628, it );
-            Buffer randRR = sobol.random1D( s, dims, 23757628, it );
+            Random2D &randBSDF = sobol.random2D( s, dims, 23757628, it );
+            Buffer &randRR = sobol.random1D( s, dims, 23757628, it );
             contrib.sampleBSDF(
                 s,
                 out,
@@ -662,31 +668,6 @@ int main()
 
         contrib.addColor( s, film.L, film.pixel, film.iteration );
     }
-
-    int nanCount = 0;
-    int infCount = 0;
-    int invalidCount = 0;
-
-    for (const auto& d : film.pixel.toCPU<glm::vec4>()) {
-        bool hasNan =
-            std::isnan(d.x) ||
-            std::isnan(d.y) ||
-            std::isnan(d.z);
-
-        bool hasInf =
-            std::isinf(d.x) ||
-            std::isinf(d.y) ||
-            std::isinf(d.z);
-
-        if (hasNan) nanCount++;
-        if (hasInf) infCount++;
-        if (hasNan || hasInf) invalidCount++;
-    }
-
-    printf("NaN pixels: %d\n", nanCount);
-    printf("Inf pixels: %d\n", infCount);
-    printf("Invalid pixels: %d\n", invalidCount);
-
     // int sum = 0;
     // for( auto &d : film.pixel.toCPU<glm::vec4>() ) {
     //     if( d.x * .2126 + d.y* .715 + d.z * .0722 > 10. ) {

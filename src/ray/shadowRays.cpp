@@ -8,7 +8,7 @@ Buffer& ShadowRays::generate(
     Buffer &normals, 
     Buffer &dead, 
     Buffer &light, 
-    Random2D random2d,
+    Random2D &random2d,
     Buffer &hitEmissive ) {
 
     GLuint idx = 0;

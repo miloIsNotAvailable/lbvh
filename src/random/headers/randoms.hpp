@@ -289,6 +289,7 @@ class Sobol {
     const int DIMS = 1024; 
     uint32_t size;
     
+    Random2D rand2D;
     Buffer dim, data, v_k, seed, iter;
 
     void rand( Buffer &inp, uint32_t size, uint32_t d, uint32_t seed, uint32_t i );
@@ -302,6 +303,7 @@ class Sobol {
     directions( DIMS * 32 ), 
     sample1D( sobolSrc ),
     size(size),
+    rand2D( size ),
     dim(
         GL_UNIFORM_BUFFER,
         sizeof(uint32_t),
@@ -395,5 +397,5 @@ class Sobol {
     }
 
     Buffer &random1D( uint32_t size, uint32_t& dim, uint32_t seed, uint32_t i );
-    Random2D random2D( uint32_t size, uint32_t& dim, uint32_t seed, uint32_t i );
+    Random2D &random2D( uint32_t size, uint32_t& dim, uint32_t seed, uint32_t i );
 };

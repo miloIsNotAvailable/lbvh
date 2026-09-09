@@ -68,9 +68,9 @@ Buffer& Sobol::random1D( uint32_t size, uint32_t& d, uint32_t seed_, uint32_t i 
     return data;
 }
 
-Random2D Sobol::random2D( uint32_t size, uint32_t& d, uint32_t seed_, uint32_t i ) {
+Random2D &Sobol::random2D( uint32_t size, uint32_t& d, uint32_t seed_, uint32_t i ) {
 
-    Random2D rand2D( size );
+    // Random2D rand2D( size );
 
     rand( rand2D.X(), size, d, seed_ ^ d, i );
     rand( rand2D.Y(), size, d + 1, seed_ ^ (d+1), i );

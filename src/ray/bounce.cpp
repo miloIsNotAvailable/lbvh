@@ -70,7 +70,7 @@ void Contribution::sampleBSDF(
         uint32_t size,
         Buffer &raysIn,
         Buffer &dead, 
-        Random2D rand2d,
+        Random2D &rand2d,
         Buffer &rand1d,
         Buffer &triIds, 
         Buffer &normals,

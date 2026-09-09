@@ -425,7 +425,7 @@ class ShadowRays {
         Buffer &normals, 
         Buffer &dead,
         Buffer &light,
-        Random2D random2d,
+        Random2D &random2d,
         Buffer &hitEmissive
     );
 

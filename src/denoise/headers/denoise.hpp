@@ -185,3 +185,41 @@ void main() {
     outPixel[id].col = sum / cum_w;
 }
 )";
+
+class Atrous {
+
+    private:
+    Buffer colors, normals, depth, valid;
+    Buffer offstes;
+    public:
+    Atrous( uint32_t size ) : 
+    
+    colors(
+        GL_SHADER_STORAGE_BUFFER,
+        3 * size * sizeof(float),
+        nullptr,
+        GL_DYNAMIC_COPY   
+    ),
+    normals(
+        GL_SHADER_STORAGE_BUFFER,
+        3 * size * sizeof(float),
+        nullptr,
+        GL_DYNAMIC_COPY   
+    ),
+    depth(
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(float),
+        nullptr,
+        GL_DYNAMIC_COPY   
+    ),
+    valid(
+        GL_SHADER_STORAGE_BUFFER,
+        size * sizeof(uint32_t),
+        nullptr,
+        GL_DYNAMIC_COPY   
+    )
+    
+    {}
+
+    void saveGBuffers();
+};
