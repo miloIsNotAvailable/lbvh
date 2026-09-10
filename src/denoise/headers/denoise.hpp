@@ -5,6 +5,7 @@
 #include <string>
 #include <glm/glm.hpp>
 #include <utils.hpp>
+#include<array>
 
 struct Atrous {
     glm::vec4 pos;
@@ -12,29 +13,59 @@ struct Atrous {
     uint32_t valid;
 };
 
-inline const std::string denoiseLayout = R"(
+inline const std::string saveDenoiseInfoSrc = R"(
 #version 430
 
 layout(local_size_x = 64) in;
-)";
-
-inline const std::string denoiseHeader = denoiseLayout + structs;
-
-inline const std::string saveDenoiseInfoSrc = denoiseHeader + R"(
-
-layout(std430, binding = 0) buffer HitInfo
+)" + structs + R"(
+layout(std430, binding = 0) buffer Depth
 {
-    Ray rays[];
+    float depth[];
 };
 
-layout(std430, binding = 1) buffer AtrousData
+layout(std430, binding = 1) buffer OutNormals
 {
-    Atrous atrous[];
+    float outNormals[];
 };
 
-layout(std430, binding = 2) buffer Normals
+layout(std430, binding = 2) buffer Valid
+{
+    uint valid[];
+};
+
+layout(std430, binding = 3) buffer Dead
+{
+    uint dead[];
+};
+
+layout(std430, binding = 4) buffer Normals
 {
     vec4 normals[];
+};
+
+layout(std430, binding = 5) buffer TriIds
+{
+    uint triIds[];
+};
+
+layout(std430, binding = 6) buffer Triangles
+{
+    Triangle triangles[];
+};
+
+layout(std430, binding = 7) buffer Materials
+{
+    Material materials[];
+};
+
+layout(std430, binding = 8) buffer RayPosDir
+{
+    float rays[];
+};
+
+layout(std430, binding = 9) buffer HitT
+{
+    float hitT[];
 };
 
 layout(std140, binding = 0) uniform SceneData
@@ -47,60 +78,103 @@ void main() {
 
     uint id = gl_GlobalInvocationID.x;
 
-    if (id >= rays.length())
+    uint N = rays.length() / 6;
+
+    if (id >= N)
         return;
 
-    uint pixelId = uint(rays[id].pixelId);
-
-    if (rays[id].t < 0.0 || rays[id].triId < 0)
+    if (dead[id] == 1u)
     {
-        atrous[pixelId].pos = vec4(0.0);
-        atrous[pixelId].nor = vec4(0.0);
-        atrous[pixelId].valid = 0u;
+        depth[id + N * 0] = 0.f;
+        depth[id + N * 1] = 0.f;
+        depth[id + N * 2] = 0.f;
+        
+        outNormals[id + N * 0] = -1.f;
+        outNormals[id + N * 1] = 0.f;
+        outNormals[id + N * 2] = 0.f;
+
+        valid[id] = 0u;
+        
         return;
     }
 
-    uint triIdx = uint(rays[id].triId);
+    vec3 o = vec3(
+        rays[ id + N * 0 ],
+        rays[ id + N * 1 ],
+        rays[ id + N * 2 ]
+    );
 
-    vec3 pos = rays[id].o.xyz + rays[id].t * rays[id].dir.xyz;
+    vec3 d = vec3(
+        rays[ id + N * 3 ],
+        rays[ id + N * 4 ],
+        rays[ id + N * 5 ]
+    );
+
+    vec3 pos = o + hitT[id] * d;
+
+    uint triIdx = uint(triIds[id]);
 
     vec3 nor = normals[triIdx].xyz;
 
-    if (dot(rays[id].dir.xyz, nor) > 0.0)
+    if (dot(d, nor) > 0.0)
         nor = -nor;
 
-    atrous[pixelId].pos   = vec4 ((pos - scene.bmin.xyz) / (scene.bmax.xyz - scene.bmin.xyz) , 1.0);
-    // atrous[pixelId].pos   = vec4 (pos, 1.0);
-    atrous[pixelId].nor   = vec4(nor * .5 + .5, 0.0);
-    atrous[pixelId].valid = 1u;
+    vec3 pos01 = (pos - scene.bmin.xyz) / (scene.bmax.xyz - scene.bmin.xyz);
+
+    depth[id + N * 0] = pos01.x;
+    depth[id + N * 1] = pos01.y;
+    depth[id + N * 2] = pos01.z;
+
+    vec3 nor01 = nor * .5 + .5;
+
+    outNormals[id + N * 0] = nor01.x;
+    outNormals[id + N * 1] = nor01.y;
+    outNormals[id + N * 2] = nor01.z;
+
+    valid[id] = 1u;
 }
 )";
 
-inline const std::string denoiseSrc = denoiseHeader + R"(
+inline const std::string denoiseSrc = R"(
 
+#version 430
+
+layout(local_size_x = 64) in;
+)" + structs + 
+R"(
 layout(std430, binding = 0) buffer Colors
 {
-    Pixel pixels[];
+    vec4 colors[];
 };
 
-layout(std430, binding = 1) buffer AtrousData
+layout(std430, binding = 1) buffer Normals
 {
-    Atrous atrous[];
+    float normals[];
 };
 
-layout(std430, binding = 2) buffer Offsets
+layout(std430, binding = 2) buffer Depth
+{
+    float depth[];
+};
+
+layout(std430, binding = 3) buffer Valid
+{
+    uint valid[];
+};
+
+layout(std430, binding = 4) buffer Offsets
 {
     ivec2 offsets[];
 };
 
-layout(std430, binding = 3) buffer Kernel
+layout(std430, binding = 5) buffer Kernel
 {
     float kernel[];
 };
 
-layout(std430, binding = 4) buffer DenoiseOut
+layout(std430, binding = 6) buffer DenoiseOut
 {
-    Pixel outPixel[];
+    vec4 outPixel[];
 };
 
 layout(std140, binding = 0) uniform Step
@@ -116,7 +190,9 @@ layout(std140, binding = 1) uniform CameraData
 void main() {
     uint id = gl_GlobalInvocationID.x;
 
-    if( id >= pixels.length() )
+    uint N = normals.length() / 3;
+
+    if( id >= colors.length() )
         return;
 
     int width  = int(camera.WIDTH);
@@ -125,17 +201,27 @@ void main() {
     int x = int(id) % width;
     int y = int(id) / width;
 
-    vec4 cval = pixels[id].col;
-    vec4 nval = atrous[id].nor;
-    vec4 pval = atrous[id].pos;
+    vec3 cval = colors[ id ].xyz;
+    vec3 nval = vec3(
+        normals[id + N * 0],
+        normals[id + N * 1],
+        normals[id + N * 2]
+    );
+    vec3 pval = vec3(
+        depth[ id + N * 0 ],
+        depth[ id + N * 1 ],
+        depth[ id + N * 2 ]
+    );
     
-    uint validC = atrous[id].valid;
+    uint validC = valid[id];
 
-    float c_phi = .1;
-    float n_phi = .01;
-    float p_phi = .01;
+    // for 4 iter
+    float c_phi = .5;
+    float n_phi = .001;
+    float p_phi = .001;
 
-    vec4 sum = vec4(0.0);
+
+    vec3 sum = vec3(0.0);
     float cum_w = 0.0;
 
     float stepwidth = float(sw);
@@ -152,27 +238,35 @@ void main() {
 
         int ind = row * width + col;
     
-        uint validN = atrous[uint(ind)].valid;
+        uint validN = valid[uint(ind)];
 
         if( validN != validC ) continue;
 
         float n_w = 1.;
         float p_w = 1.;
 
-        vec4 ctmp = pixels[uint(ind)].col;
-        vec4 t = cval - ctmp;
+        vec3 ctmp = colors[ uint(ind) ].xyz;
+        vec3 t = cval - ctmp;
         float dist2 = dot(t.xyz,t.xyz);
         float c_w = min(exp(-(dist2)/c_phi), 1.0);
 
         if( validC == 1u ) {
-            vec4 ntmp = atrous[uint(ind)].nor;
+            vec3 ntmp = vec3(
+                normals[uint(ind) + N * 0],
+                normals[uint(ind) + N * 1],
+                normals[uint(ind) + N * 2]
+            );
             t = nval - ntmp;
-            dist2 = max(dot(t.xyz,t.xyz)/(stepwidth*stepwidth),0.0);
+            dist2 = max(dot(t,t)/(stepwidth*stepwidth),0.0);
             n_w = min(exp(-(dist2)/n_phi), 1.0);
     
-            vec4 ptmp = atrous[uint(ind)].pos;
+            vec3 ptmp = vec3(
+                depth[uint(ind) + N * 0],
+                depth[uint(ind) + N * 1],
+                depth[uint(ind) + N * 2]
+            );
             t = pval - ptmp;
-            dist2 = dot(t.xyz,t.xyz);
+            dist2 = dot(t,t);
             p_w = min(exp(-(dist2)/p_phi),1.0);
         }
 
@@ -182,21 +276,34 @@ void main() {
         cum_w += weight*kernel[i];
     }
 
-    outPixel[id].col = sum / cum_w;
+    outPixel[id] = vec4(sum / cum_w, 0.f);
 }
 )";
 
-class Atrous {
+static constexpr std::array<float, 25> kernelArr = {
+    1.f/256.f,  4.f/256.f,  6.f/256.f,  4.f/256.f, 1.f/256.f,
+    4.f/256.f, 16.f/256.f, 24.f/256.f, 16.f/256.f, 4.f/256.f,
+    6.f/256.f, 24.f/256.f, 36.f/256.f, 24.f/256.f, 6.f/256.f,
+    4.f/256.f, 16.f/256.f, 24.f/256.f, 16.f/256.f, 4.f/256.f,
+    1.f/256.f,  4.f/256.f,  6.f/256.f,  4.f/256.f, 1.f/256.f
+};
+
+
+class AtrousDenoiser {
 
     private:
-    Buffer colors, normals, depth, valid;
-    Buffer offstes;
-    public:
-    Atrous( uint32_t size ) : 
+    Buffer offstes, kernel, sw, outPixel, offsets;
+    Buffer normals, depth, valid;
     
-    colors(
+    Program saveBufferInfo, denoise;
+    
+    public:
+    AtrousDenoiser( uint32_t size ) : 
+    saveBufferInfo( saveDenoiseInfoSrc ),
+    denoise( denoiseSrc ),
+    outPixel(
         GL_SHADER_STORAGE_BUFFER,
-        3 * size * sizeof(float),
+        size * sizeof(glm::vec4),
         nullptr,
         GL_DYNAMIC_COPY   
     ),
@@ -208,7 +315,7 @@ class Atrous {
     ),
     depth(
         GL_SHADER_STORAGE_BUFFER,
-        size * sizeof(float),
+        3 * size * sizeof(float),
         nullptr,
         GL_DYNAMIC_COPY   
     ),
@@ -217,9 +324,62 @@ class Atrous {
         size * sizeof(uint32_t),
         nullptr,
         GL_DYNAMIC_COPY   
+    ),
+    kernel(
+        GL_SHADER_STORAGE_BUFFER,
+        kernelArr.size() * sizeof(float),
+        kernelArr.data(),
+        GL_DYNAMIC_COPY  
+    ),
+    sw(
+        GL_UNIFORM_BUFFER,
+        sizeof(int),
+        nullptr,
+        GL_DYNAMIC_COPY  
+    ),
+    offsets(
+        GL_SHADER_STORAGE_BUFFER,
+        25 * sizeof(glm::ivec2),
+        nullptr,
+        GL_DYNAMIC_COPY         
     )
     
-    {}
+    {
+        std::vector<glm::ivec2> off;
+        off.reserve( 25 );
 
-    void saveGBuffers();
+        for( int i = -2; i <= 2; i ++ ) {
+            for( int j = -2; j <= 2; j ++ ) {
+                off.push_back( glm::ivec2( i, j ) );
+            }
+        }
+
+        Buffer off__(
+            GL_SHADER_STORAGE_BUFFER,
+            off.size() * sizeof(glm::ivec2),
+            off.data(),
+            GL_DYNAMIC_COPY  
+        );
+
+        offsets = std::move( off__ );
+    }
+
+    void saveGBuffers(
+
+        uint32_t size,
+        Buffer &dead,
+        Buffer &normals,
+        Buffer &triIds,
+        Buffer &triangles,
+        Buffer &materials,
+        Buffer &rays,
+        Buffer &hitT,
+        Buffer &scene
+    );
+
+    Buffer& operator()(
+        uint32_t size,
+        Buffer &colors,
+        Buffer &camera
+    );
 };

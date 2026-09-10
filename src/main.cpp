@@ -60,6 +60,7 @@ const GLuint WIDTH = 1600, HEIGHT = 1600;
 glm::vec3 e(0., 0., -700.f);
 glm::vec3 c(0.f, 0.f, 0.f);
 
+// Room.obj
 // glm::vec3 e(-50., 60., 250.f);
 // glm::vec3 c(-50., 0., 0.f);
 
@@ -422,6 +423,13 @@ int main()
         GL_DYNAMIC_COPY
     );
 
+    Buffer sceneUBO(
+        GL_UNIFORM_BUFFER,
+        sizeof(AABB),
+        &aabb,
+        GL_DYNAMIC_COPY
+    );
+
     // auto after = obj.materials;
 
     // assert(before.size() == after.size());
@@ -482,6 +490,15 @@ int main()
         glm::vec4(100.),
         glm::vec4( 0.f, -1.f, 0.f, 0.f ) 
     );
+    
+    // Room.obj
+    // Light light( 
+    //     glm::vec3(-50.f, 140.f, -50.f), 
+    //     10.f, 
+    //     glm::vec4(400.),
+    //     glm::vec4( 0.f, -1.f, 0.f, 0.f ) 
+    // );
+        
     Film film( WIDTH, HEIGHT, camera, light );
     uint32_t i = 0;
     film.iteration.update( &i, sizeof( uint32_t ) );
@@ -505,6 +522,8 @@ int main()
     Traverse traverse( s );
     ShadowRays shadows( s );
     Contribution contrib( s );
+
+    AtrousDenoiser denoiser( s );
 
     const int MAX_ITER = 32;
     uint32_t iter = uint32_t( MAX_ITER );
@@ -557,6 +576,20 @@ int main()
             // }    
 
             Buffer &tOut = traverse( s, out, lbvhBuffer, trianglesSSBO, lbvh.triIdASSBO, film.light );
+
+            if( bounces == 0 && i == 0 ) {
+                denoiser.saveGBuffers(
+                    s, 
+                    traverse.dead, 
+                    normalsSSBO,
+                    traverse.triIds,
+                    trianglesSSBO,
+                    materialsSSBO,
+                    out,
+                    tOut,
+                    sceneUBO
+                );
+            }
 
             // dead rays: 0/2560000
             // hit emissive rays: 4276/2560000
@@ -668,61 +701,9 @@ int main()
 
         contrib.addColor( s, film.L, film.pixel, film.iteration );
     }
-    // int sum = 0;
-    // for( auto &d : film.pixel.toCPU<glm::vec4>() ) {
-    //     if( d.x * .2126 + d.y* .715 + d.z * .0722 > 10. ) {
-    //         sum ++;
-    //     }
-    // }
 
-    // // 15936 32spp
-    // // 27403 10spp
-    // printf( "eeek: %d\n", sum );
-
-//     Program denoise( denoiseSrc );
-
-//    Buffer pixelBSSBO(
-//         GL_SHADER_STORAGE_BUFFER,
-//         rays.size() * sizeof(Pixel),
-//         nullptr,
-//         GL_DYNAMIC_COPY
-//     );
-
-//     Buffer stepUBO(
-//         GL_UNIFORM_BUFFER,
-//         sizeof(int),
-//         nullptr,
-//         GL_DYNAMIC_COPY
-//     );
-
-    // for( int i = 0; i < 4; i ++ ) {
-
-    //     int step = 1 << i;
-
-    //     stepUBO.update( &step, sizeof( int ) );
-
-    //     pixelSSBO.toGPU( 0 );
-    //     atrousSSBO.toGPU( 1 );
-    //     offsetsSSBO.toGPU( 2 );
-    //     kernelSSBO.toGPU( 3 );
-    //     pixelBSSBO.toGPU( 4 );
-        
-    //     stepUBO.toGPU( 0 );
-    //     cameraUBO.toGPU( 1 );
-
-    //     denoise( groups, 1, 1 );
-    //     barrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-    //     std::swap( pixelSSBO, pixelBSSBO );
-    // }
-
-    // std::vector<Pixel> pixelsB = pixelSSBO.toCPU<Pixel>();
-    // for( int i = 0; i < 20; i ++ ) {
-    //     Pixel p = pixelsB[ i ];
-    //     printf( "%f, %f, %f\n", p.col.x, p.col.y, p.col.z );
-    // } 
-
-    std::vector<glm::vec4> outCol = film.pixel.toCPU<glm::vec4>();
+    Buffer &outDenoised = denoiser( s, film.pixel, film.camera );
+    std::vector<glm::vec4> outCol = outDenoised.toCPU<glm::vec4>();
 
     for( int i = 0; i < 10; i ++ ) {
         glm::vec4 c = outCol[i];
@@ -760,7 +741,7 @@ int main()
     }
 
     stbi_write_jpg(
-        "sobol2D2.jpg",
+        "sobol2D4.jpg",
         WIDTH,
         HEIGHT,
         3,
